@@ -1,14 +1,13 @@
 {
   "name": "recap-one-clip",
-  "version": "3.0.0",
-  "description": "RECAP ONE CLIP - Myanmar AI Video Recap Studio",
+  "version": "3.1.0",
+  "description": "RECAP ONE CLIP - Myanmar AI Recap Studio",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node server.js"
   },
   "engines": {
-    "node": ">=20.0.0 <27.0.0"
+    "node": ">=20"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
