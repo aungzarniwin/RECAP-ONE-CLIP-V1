@@ -1,0 +1,19 @@
+{
+  "name": "recap-one-clip",
+  "version": "1.0.0",
+  "description": "RECAP ONE CLIP - Myanmar AI Recap Studio",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
+    "google-tts-api": "^2.0.2",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^11.0.5"
+  }
+}
