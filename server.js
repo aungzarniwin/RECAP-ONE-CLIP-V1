@@ -33,7 +33,7 @@ const MAX_VIDEO_SECONDS = 5 * 60;
 const MAX_FILE_SIZE = 700 * 1024 * 1024;
 
 const GEMINI_MODEL =
-  process.env.GEMINI_MODEL || "gemini-3.8-flash";
+  process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY || "";
