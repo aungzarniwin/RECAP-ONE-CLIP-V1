@@ -1,3 +1,10 @@
+/*
+=========================================================
+ RECAP ONE CLIP V3.1
+ Myanmar AI Recap Studio
+=========================================================
+*/
+
 require("dotenv").config();
 
 const express = require("express");
@@ -10,8 +17,6 @@ const { spawn } = require("child_process");
 
 const ffmpegPath = require("ffmpeg-static");
 const ffprobeStatic = require("ffprobe-static");
-const ffprobePath = ffprobeStatic.path;
-
 const googleTTS = require("google-tts-api");
 const { GoogleGenAI } = require("@google/genai");
 
@@ -19,18 +24,89 @@ const app = express();
 
 const PORT = process.env.PORT || 10000;
 
-const ROOT_DIR = __dirname;
-const UPLOAD_DIR = path.join(ROOT_DIR, "uploads");
-const OUTPUT_DIR = path.join(ROOT_DIR, "outputs");
+const ROOT = __dirname;
+const UPLOAD_DIR = path.join(ROOT, "uploads");
+const OUTPUT_DIR = path.join(ROOT, "outputs");
+const TEMP_DIR = path.join(ROOT, "temp");
 
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+for (const dir of [UPLOAD_DIR, OUTPUT_DIR, TEMP_DIR]) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
 
-/* =========================================================
-   GEMINI
-========================================================= */
+app.use(cors());
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true }));
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+app.use("/outputs", express.static(OUTPUT_DIR));
+
+/*
+=========================================================
+ MULTER
+=========================================================
+*/
+
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, UPLOAD_DIR);
+  },
+
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname || ".mp4");
+    const safeExt = ext && ext.length <= 10 ? ext : ".mp4";
+
+    const filename =
+      Date.now() +
+      "-" +
+      crypto.randomBytes(6).toString("hex") +
+      safeExt;
+
+    cb(null, filename);
+  }
+});
+
+const upload = multer({
+  storage,
+
+  limits: {
+    fileSize: 700 * 1024 * 1024
+  },
+
+  fileFilter: function (req, file, cb) {
+    const allowed = [
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+      "video/x-matroska",
+      "video/avi",
+      "video/mpeg"
+    ];
+
+    if (
+      allowed.includes(file.mimetype) ||
+      file.originalname.toLowerCase().match(/\.(mp4|webm|mov|mkv|avi|mpeg|mpg)$/)
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error("Unsupported video format"));
+    }
+  }
+});
+
+/*
+=========================================================
+ GEMINI
+=========================================================
+*/
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+const ai = GEMINI_API_KEY
+  ? new GoogleGenAI({
+      apiKey: GEMINI_API_KEY
+    })
+  : null;
 
 const PRIMARY_MODEL =
   process.env.GEMINI_MODEL || "gemini-3.8-flash";
@@ -43,145 +119,26 @@ const FALLBACK_MODELS = [
   "gemini-3.5-flash"
 ].filter((v, i, a) => v && a.indexOf(v) === i);
 
-let ai = null;
-
-if (GEMINI_API_KEY) {
-  ai = new GoogleGenAI({
-    apiKey: GEMINI_API_KEY
-  });
-}
-
-/* =========================================================
-   APP
-========================================================= */
-
-app.use(
-  cors({
-    origin: true,
-    credentials: false
-  })
-);
-
-app.use(express.json({ limit: "20mb" }));
-app.use(express.urlencoded({ extended: true }));
-
-app.use("/outputs", express.static(OUTPUT_DIR));
-
-/* =========================================================
-   MULTER
-========================================================= */
-
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, UPLOAD_DIR);
-  },
-
-  filename: function (req, file, cb) {
-    const ext = path.extname(file.originalname) || ".mp4";
-
-    const safeName =
-      Date.now() +
-      "-" +
-      crypto.randomBytes(5).toString("hex") +
-      ext;
-
-    cb(null, safeName);
-  }
-});
-
-const upload = multer({
-  storage,
-
-  limits: {
-    fileSize: 700 * 1024 * 1024
-  }
-});
-
-/* =========================================================
-   JOB STORAGE
-========================================================= */
+/*
+=========================================================
+ JOB STORAGE
+=========================================================
+*/
 
 const jobs = new Map();
 
-function createJob(file) {
-  const id =
-    Date.now().toString(36) +
+/*
+=========================================================
+ UTILS
+=========================================================
+*/
+
+function makeId() {
+  return (
+    crypto.randomBytes(6).toString("base64url") +
     "-" +
-    crypto.randomBytes(5).toString("hex");
-
-  const job = {
-    id,
-
-    status: "uploaded",
-
-    progress: 0,
-
-    stage: "READY",
-
-    message: "Video uploaded",
-
-    file: file.path,
-
-    originalName: file.originalname,
-
-    mimeType: file.mimetype,
-
-    notes: "",
-
-    voiceStyle: "natural",
-
-    script: "",
-
-    analysis: "",
-
-    narrationFile: null,
-
-    subtitleFile: null,
-
-    outputFile: null,
-
-    outputUrl: null,
-
-    subtitleUrl: null,
-
-    modelUsed: null,
-
-    attempts: 0,
-
-    error: null,
-
-    createdAt: Date.now(),
-
-    updatedAt: Date.now()
-  };
-
-  jobs.set(id, job);
-
-  return job;
-}
-
-function updateJob(id, data) {
-  const job = jobs.get(id);
-
-  if (!job) {
-    return;
-  }
-
-  Object.assign(job, data);
-
-  job.updatedAt = Date.now();
-
-  jobs.set(id, job);
-}
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
+    Date.now().toString(36)
+  );
 }
 
 function safeUnlink(file) {
@@ -190,125 +147,221 @@ function safeUnlink(file) {
       fs.unlinkSync(file);
     }
   } catch (e) {
-    console.log("Cleanup warning:", e.message);
+    console.log("[CLEANUP] Could not delete:", file);
   }
 }
 
-function cleanGeminiText(text) {
-  if (!text) return "";
+function updateJob(id, data) {
+  const job = jobs.get(id);
 
-  let result = String(text);
+  if (!job) return;
 
-  result = result.replace(/```[\s\S]*?```/g, "");
+  Object.assign(job, data);
 
-  result = result.replace(/^Analysis\s*:/i, "");
-
-  result = result.trim();
-
-  return result;
+  job.updatedAt = new Date().toISOString();
 }
 
-/* =========================================================
-   ERROR HELPERS
-========================================================= */
+function setProgress(id, progress, stage, message, extra = {}) {
+  const job = jobs.get(id);
+
+  if (!job) return;
+
+  job.progress = Math.max(
+    0,
+    Math.min(100, Math.round(progress))
+  );
+
+  if (stage !== undefined) {
+    job.stage = stage;
+  }
+
+  if (message !== undefined) {
+    job.message = message;
+  }
+
+  Object.assign(job, extra);
+
+  job.updatedAt = new Date().toISOString();
+}
 
 function isRetryableGeminiError(error) {
-  const message =
-    error?.message ||
-    error?.toString() ||
-    "";
-
-  const code =
-    error?.status ||
-    error?.code ||
-    "";
+  const text = JSON.stringify(error || {}).toLowerCase();
 
   return (
-    String(code).includes("503") ||
-    String(code).includes("UNAVAILABLE") ||
-    message.includes("503") ||
-    message.includes("UNAVAILABLE") ||
-    message.toLowerCase().includes("high demand") ||
-    message.toLowerCase().includes("overloaded") ||
-    message.toLowerCase().includes("temporarily unavailable")
+    text.includes("503") ||
+    text.includes("unavailable") ||
+    text.includes("high demand") ||
+    text.includes("overloaded") ||
+    text.includes("temporarily unavailable") ||
+    text.includes("429") ||
+    text.includes("rate limit") ||
+    text.includes("resource exhausted")
   );
 }
 
-/* =========================================================
-   GEMINI GENERATION WITH RETRY + FALLBACK
-========================================================= */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-async function geminiGenerateWithRetry(jobId, contents, options = {}) {
+/*
+=========================================================
+ PROMISE TIMEOUT
+=========================================================
+*/
 
+async function withTimeout(promise, ms, label) {
+  let timer;
+
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new Error(
+          `${label} timed out after ${Math.round(ms / 1000)} seconds`
+        )
+      );
+    }, ms);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/*
+=========================================================
+ GEMINI GENERATE WITH RETRY
+=========================================================
+*/
+
+async function geminiGenerateWithRetry(
+  id,
+  options = {}
+) {
   if (!ai) {
     throw new Error(
       "GEMINI_API_KEY is not configured on Render"
     );
   }
 
-  const maxAttemptsPerModel =
-    options.maxAttemptsPerModel || 3;
+  const {
+    contents,
+    progressStart = 35,
+    progressEnd = 45,
+    stage = "ANALYZE",
+    label = "Gemini AI",
+    timeoutMs = 180000
+  } = options;
 
   let lastError = null;
 
-  for (const model of FALLBACK_MODELS) {
+  for (let modelIndex = 0; modelIndex < FALLBACK_MODELS.length; modelIndex++) {
+    const model = FALLBACK_MODELS[modelIndex];
 
-    for (
-      let attempt = 1;
-      attempt <= maxAttemptsPerModel;
-      attempt++
-    ) {
-
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-
-        updateJob(jobId, {
-          stage: "ANALYZE",
-          message:
-            `Gemini ${model} processing... attempt ${attempt}/${maxAttemptsPerModel}`,
-          modelUsed: model,
-          attempts: attempt
-        });
-
         console.log(
-          `[Gemini] model=${model} attempt=${attempt}/${maxAttemptsPerModel}`
+          `[Gemini] ${label} model=${model} attempt=${attempt}/3`
         );
 
-        const response =
-          await ai.models.generateContent({
-            model,
-            contents
-          });
+        const attemptBase =
+          progressStart +
+          ((progressEnd - progressStart) * modelIndex) /
+            Math.max(1, FALLBACK_MODELS.length);
 
-        const text =
-          response?.text ||
-          response?.response?.text ||
-          "";
+        setProgress(
+          id,
+          Math.min(progressEnd - 1, attemptBase),
+          stage,
+          `${label}: ${model} — attempt ${attempt}/3`,
+          {
+            modelUsed: model,
+            attempt
+          }
+        );
 
-        if (!text || !String(text).trim()) {
-          throw new Error(
-            `Gemini ${model} returned an empty response`
+        /*
+        ---------------------------------------------------
+        HEARTBEAT
+        ---------------------------------------------------
+        */
+
+        let heartbeat = 0;
+
+        const heartbeatTimer = setInterval(() => {
+          heartbeat++;
+
+          const span = Math.max(
+            1,
+            progressEnd - progressStart - 1
           );
+
+          const current =
+            progressStart +
+            Math.min(
+              span,
+              heartbeat % (span + 1)
+            );
+
+          setProgress(
+            id,
+            current,
+            stage,
+            `${label}: processing...`,
+            {
+              modelUsed: model,
+              attempt
+            }
+          );
+        }, 5000);
+
+        try {
+          const response = await withTimeout(
+            ai.models.generateContent({
+              model,
+              contents
+            }),
+            timeoutMs,
+            `${label} (${model})`
+          );
+
+          clearInterval(heartbeatTimer);
+
+          console.log(
+            `[Gemini] SUCCESS model=${model}`
+          );
+
+          setProgress(
+            id,
+            progressEnd,
+            stage,
+            `${label}: completed`,
+            {
+              modelUsed: model,
+              attempt,
+              geminiSuccess: true
+            }
+          );
+
+          return response;
+        } catch (err) {
+          clearInterval(heartbeatTimer);
+          throw err;
         }
-
-        console.log(
-          `[Gemini] SUCCESS model=${model}`
-        );
-
-        updateJob(jobId, {
-          modelUsed: model,
-          message:
-            `Gemini analysis completed with ${model}`
-        });
-
-        return cleanGeminiText(text);
-
       } catch (error) {
-
         lastError = error;
 
-        console.error(
-          `[Gemini] FAILED model=${model} attempt=${attempt}`,
-          error?.message || error
+        console.log(
+          `[Gemini] FAILED model=${model} attempt=${attempt}`
+        );
+
+        console.log(
+          JSON.stringify(
+            error?.message ||
+              error?.response ||
+              error
+          )
         );
 
         const retryable =
@@ -318,22 +371,33 @@ async function geminiGenerateWithRetry(jobId, contents, options = {}) {
           throw error;
         }
 
-        if (attempt < maxAttemptsPerModel) {
-
+        if (attempt < 3) {
           const wait =
-            Math.min(
-              5000 * Math.pow(2, attempt - 1),
-              30000
-            );
+            attempt === 1
+              ? 5000
+              : attempt === 2
+              ? 10000
+              : 20000;
 
-          updateJob(jobId, {
-            stage: "ANALYZE",
-            message:
-              `Gemini server busy — retrying in ${Math.round(wait / 1000)}s`
-          });
+          setProgress(
+            id,
+            Math.min(
+              progressEnd - 1,
+              progressStart + attempt * 2
+            ),
+            stage,
+            `Gemini busy — retrying in ${Math.round(
+              wait / 1000
+            )} seconds`,
+            {
+              modelUsed: model,
+              attempt,
+              retrying: true
+            }
+          );
 
           console.log(
-            `[Gemini] 503/unavailable. Waiting ${wait}ms`
+            `[Gemini] Waiting ${wait}ms`
           );
 
           await sleep(wait);
@@ -341,309 +405,423 @@ async function geminiGenerateWithRetry(jobId, contents, options = {}) {
       }
     }
 
-    updateJob(jobId, {
-      stage: "ANALYZE",
-      message:
-        `${model} unavailable — switching to another Gemini model`
-    });
+    /*
+    -----------------------------------------------------
+    SWITCH MODEL
+    -----------------------------------------------------
+    */
 
-    console.log(
-      `[Gemini] Switching away from ${model}`
-    );
+    if (modelIndex < FALLBACK_MODELS.length - 1) {
+      setProgress(
+        id,
+        Math.min(
+          progressEnd - 1,
+          progressStart + 3
+        ),
+        stage,
+        `Switching Gemini model...`,
+        {
+          retrying: true
+        }
+      );
+
+      console.log(
+        `[Gemini] Switching from ${model} to ${
+          FALLBACK_MODELS[modelIndex + 1]
+        }`
+      );
+
+      await sleep(1500);
+    }
   }
 
-  throw new Error(
-    `Gemini temporarily unavailable after retrying multiple models. Last error: ${
-      lastError?.message || "Unknown Gemini error"
-    }`
-  );
+  throw lastError || new Error("Gemini request failed");
 }
 
-/* =========================================================
-   VIDEO FILE UPLOAD TO GEMINI
-========================================================= */
+/*
+=========================================================
+ GEMINI FILE UPLOAD
+=========================================================
+*/
 
-async function uploadVideoToGemini(jobId, filePath, mimeType) {
-
+async function uploadVideoToGemini(
+  id,
+  videoPath,
+  mimeType
+) {
   if (!ai) {
     throw new Error(
       "GEMINI_API_KEY is not configured"
     );
   }
 
-  updateJob(jobId, {
-    progress: 20,
-    stage: "ANALYZE",
-    message: "Uploading video to Gemini..."
-  });
-
   console.log(
-    `[Gemini] Uploading video: ${filePath}`
+    `[Gemini] Uploading video: ${videoPath}`
   );
 
-  const uploaded =
-    await ai.files.upload({
-      file: filePath,
+  setProgress(
+    id,
+    15,
+    "UPLOAD",
+    "Uploading video to Gemini..."
+  );
 
-      config: {
-        mimeType:
-          mimeType || "video/mp4"
-      }
-    });
+  const uploaded = await ai.files.upload({
+    file: videoPath,
+    config: {
+      mimeType:
+        mimeType || "video/mp4"
+    }
+  });
 
   if (!uploaded || !uploaded.name) {
     throw new Error(
-      "Gemini video upload returned no file reference"
+      "Gemini video upload returned no file name"
     );
   }
 
-  updateJob(jobId, {
-    progress: 30,
-    stage: "ANALYZE",
-    message: "Gemini is processing the video..."
-  });
+  setProgress(
+    id,
+    25,
+    "UPLOAD",
+    "Video uploaded. Gemini is processing the video..."
+  );
 
-  let fileInfo = uploaded;
+  let file = uploaded;
 
   const maxPolls = 180;
 
   for (let i = 0; i < maxPolls; i++) {
+    await sleep(3000);
+
+    file = await ai.files.get({
+      name: uploaded.name
+    });
+
+    const state =
+      file?.state ||
+      file?.status ||
+      "UNKNOWN";
+
+    console.log(
+      `[Gemini] File state: ${state}`
+    );
 
     if (
-      fileInfo.state === "ACTIVE" ||
-      fileInfo.state === "ACTIVE_STATE"
+      String(state).toUpperCase() ===
+        "ACTIVE" ||
+      String(state).toUpperCase() ===
+        "ACTIVE_STATE"
     ) {
-      break;
+      setProgress(
+        id,
+        35,
+        "ANALYZE",
+        "Video ready. Starting AI analysis..."
+      );
+
+      return file;
     }
 
-    if (fileInfo.state === "FAILED") {
+    if (
+      String(state).toUpperCase() ===
+        "FAILED"
+    ) {
       throw new Error(
         "Gemini video processing failed"
       );
     }
 
-    await sleep(3000);
-
-    fileInfo =
-      await ai.files.get({
-        name: uploaded.name
-      });
-
-    if (i % 5 === 0) {
-      console.log(
-        `[Gemini] File state: ${fileInfo.state}`
+    const processingProgress =
+      25 +
+      Math.min(
+        9,
+        Math.floor(
+          (i / maxPolls) * 10
+        )
       );
-    }
-  }
 
-  if (
-    fileInfo.state !== "ACTIVE" &&
-    fileInfo.state !== "ACTIVE_STATE"
-  ) {
-    throw new Error(
-      `Gemini video processing timeout. State: ${fileInfo.state}`
+    setProgress(
+      id,
+      processingProgress,
+      "UPLOAD",
+      `Gemini video processing... ${
+        i + 1
+      }/${maxPolls}`
     );
   }
 
-  updateJob(jobId, {
-    progress: 35,
-    stage: "ANALYZE",
-    message: "Video ready for Gemini analysis"
-  });
-
-  return fileInfo;
+  throw new Error(
+    "Gemini video processing timeout"
+  );
 }
 
-/* =========================================================
-   VIDEO ANALYSIS
-========================================================= */
+/*
+=========================================================
+ RESPONSE TEXT
+=========================================================
+*/
 
-async function analyzeVideo(jobId, fileInfo, notes) {
+function getResponseText(response) {
+  if (!response) return "";
 
+  if (typeof response.text === "string") {
+    return response.text.trim();
+  }
+
+  if (typeof response.text === "function") {
+    try {
+      const value = response.text();
+      if (typeof value === "string") {
+        return value.trim();
+      }
+    } catch (e) {}
+  }
+
+  try {
+    const candidates =
+      response.candidates || [];
+
+    const parts =
+      candidates[0]?.content?.parts || [];
+
+    return parts
+      .map(p => p?.text || "")
+      .join("\n")
+      .trim();
+  } catch (e) {
+    return "";
+  }
+}
+
+/*
+=========================================================
+ VIDEO ANALYSIS
+=========================================================
+*/
+
+async function analyzeVideoWithGemini(
+  id,
+  file
+) {
   const prompt = `
-You are an expert movie recap writer.
+You are a professional movie recap video analyst.
 
 Analyze the uploaded video carefully.
 
-Create a detailed factual scene-by-scene understanding of the video.
+Your job is to understand what ACTUALLY happens in the video.
 
-Focus on:
+Return a structured factual analysis including:
 
-1. Main characters
-2. Character relationships
-3. Setting
-4. Important events
-5. Major conflict
-6. Cause and effect
+1. Main story
+2. Important characters
+3. Character relationships
+4. Locations
+5. Major events in chronological order
+6. Important visual actions
 7. Important turning points
-8. Ending or current ending shown
-9. Emotional changes
-10. Important visual details
-11. Approximate chronological order
+8. Ending information visible in the uploaded video
+9. Important objects or clues
+10. Approximate scene sequence
 
-The final information will be used to create a Myanmar-language recap narration.
+IMPORTANT RULES:
 
-Do NOT invent events that are not supported by the video.
-
-Do NOT reproduce long original dialogue.
-
-Do NOT copy the screenplay.
-
-Give a concise but sufficiently detailed analysis.
-
-User notes:
-${notes || "No additional notes"}
+- Only describe events actually visible or strongly supported by the video
+- Do not invent scenes
+- Do not invent character names
+- Do not invent dialogue
+- Do not reproduce long movie dialogue
+- Do not reproduce screenplay text
+- Do not claim events that are outside the uploaded video
+- Focus on factual scene understanding
+- The output will be used to create an original Myanmar-language commentary recap
 `;
 
-  const contents = [
-    {
-      role: "user",
-
-      parts: [
-        {
-          fileData: {
-            fileUri: fileInfo.uri,
-
-            mimeType:
-              fileInfo.mimeType ||
-              "video/mp4"
-          }
-        },
-
-        {
-          text: prompt
-        }
-      ]
-    }
-  ];
-
-  const result =
+  const response =
     await geminiGenerateWithRetry(
-      jobId,
-      contents,
+      id,
       {
-        maxAttemptsPerModel: 3
+        contents: [
+          {
+            fileData: {
+              mimeType:
+                file.mimeType ||
+                "video/mp4",
+              fileUri: file.uri
+            }
+          },
+          {
+            text: prompt
+          }
+        ],
+
+        progressStart: 36,
+        progressEnd: 45,
+        stage: "ANALYZE",
+        label: "Video analysis",
+        timeoutMs: 180000
       }
     );
 
-  return result;
+  const analysis =
+    getResponseText(response);
+
+  if (!analysis) {
+    throw new Error(
+      "Gemini returned empty video analysis"
+    );
+  }
+
+  return analysis;
 }
 
-/* =========================================================
-   SCRIPT GENERATION
-========================================================= */
+/*
+=========================================================
+ MYANMAR RECAP SCRIPT
+=========================================================
+*/
 
 async function generateMyanmarScript(
-  jobId,
-  analysis,
-  notes
+  id,
+  analysis
 ) {
-
-  updateJob(jobId, {
-    progress: 50,
-    stage: "SCRIPT",
-    message: "Writing Myanmar recap narration..."
-  });
-
   const prompt = `
 You are a professional Myanmar movie recap narrator.
 
-Using the video analysis below, write a natural Myanmar-language recap narration.
+Using the factual video analysis below, write an ORIGINAL Myanmar-language movie recap narration.
 
-Requirements:
+STYLE:
 
-- Myanmar language
-- Natural spoken style
+- Natural spoken Myanmar
 - Easy to understand
 - Storytelling style
-- Do not use screenplay formatting
+- Engaging but factual
+- Suitable for YouTube narration
+- Explain events in chronological order
+- Connect scenes naturally
+- Use conversational Myanmar
 - Do not use character-name prefixes
-- Do not copy original dialogue
+- Do not write dialogue as if you are the character
+- Do not copy movie dialogue
+- Do not reproduce screenplay
 - Do not invent events
-- Keep chronological flow
-- Explain important actions and consequences
-- Make it interesting for a YouTube recap audience
-- Suitable for voice narration
-- Avoid unnecessary English
-- Avoid excessive repetition
+- Do not invent facts that are not supported by the analysis
+- Do not add fake scenes
+- Do not add unsupported ending details
 
-The narration should sound like a human Myanmar narrator explaining the story.
+IMPORTANT:
 
-User notes:
-${notes || "None"}
+This is commentary/narration, not a screenplay.
+
+Write only the narration.
 
 VIDEO ANALYSIS:
 ${analysis}
-
-Return ONLY the narration.
 `;
 
-  const contents = [
-    {
-      role: "user",
-
-      parts: [
-        {
-          text: prompt
-        }
-      ]
-    }
-  ];
-
-  const result =
+  const response =
     await geminiGenerateWithRetry(
-      jobId,
-      contents,
+      id,
       {
-        maxAttemptsPerModel: 3
+        contents: [
+          {
+            text: prompt
+          }
+        ],
+
+        progressStart: 46,
+        progressEnd: 55,
+        stage: "SCRIPT",
+        label: "Myanmar script",
+        timeoutMs: 180000
       }
     );
 
-  return result;
+  const script =
+    getResponseText(response);
+
+  if (!script) {
+    throw new Error(
+      "Gemini returned empty Myanmar script"
+    );
+  }
+
+  return script;
 }
 
-/* =========================================================
-   TTS
-========================================================= */
+/*
+=========================================================
+ TEXT CLEANING
+=========================================================
+*/
 
-function splitText(text, maxLength = 180) {
+function cleanScript(text) {
+  return String(text || "")
+    .replace(/\r/g, "")
+    .replace(/^```[\s\S]*?```$/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
-  const clean = String(text || "")
+/*
+=========================================================
+ TTS
+=========================================================
+*/
+
+function splitForTTS(text, maxLength = 180) {
+  const normalized = String(text || "")
+    .replace(/\r/g, "")
+    .replace(/\n+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!clean) {
+  if (!normalized) {
     return [];
   }
-
-  const sentences =
-    clean.split(/(?<=[။!?])/);
 
   const chunks = [];
 
   let current = "";
 
-  for (const sentence of sentences) {
+  const sentences = normalized.split(
+    /(?<=[။!?၊])/u
+  );
 
+  for (const sentence of sentences) {
     const s = sentence.trim();
 
     if (!s) continue;
 
     if (
-      (current + " " + s).trim().length
-      <= maxLength
+      (current + " " + s).trim().length <=
+      maxLength
     ) {
-
       current =
         (current + " " + s).trim();
-
     } else {
-
       if (current) {
         chunks.push(current);
       }
 
-      current = s;
+      if (s.length <= maxLength) {
+        current = s;
+      } else {
+        for (
+          let i = 0;
+          i < s.length;
+          i += maxLength
+        ) {
+          chunks.push(
+            s.slice(
+              i,
+              i + maxLength
+            )
+          );
+        }
+
+        current = "";
+      }
     }
   }
 
@@ -655,141 +833,190 @@ function splitText(text, maxLength = 180) {
 }
 
 async function createMyanmarVoice(
-  jobId,
+  id,
   script
 ) {
-
-  updateJob(jobId, {
-    progress: 65,
-    stage: "VOICE",
-    message: "Generating Myanmar narration..."
-  });
-
   const chunks =
-    splitText(script, 180);
+    splitForTTS(script, 180);
 
   if (!chunks.length) {
     throw new Error(
-      "Narration script is empty"
+      "No text available for TTS"
     );
   }
 
-  const audioParts = [];
+  const jobTemp =
+    path.join(
+      TEMP_DIR,
+      makeId()
+    );
+
+  fs.mkdirSync(jobTemp, {
+    recursive: true
+  });
+
+  const audioFiles = [];
+
+  console.log(
+    `[TTS] Total chunks: ${chunks.length}`
+  );
 
   for (let i = 0; i < chunks.length; i++) {
-
-    const text = chunks[i];
+    const chunk = chunks[i];
 
     console.log(
       `[TTS] ${i + 1}/${chunks.length}`
     );
 
-    try {
+    setProgress(
+      id,
+      55 +
+        Math.floor(
+          ((i + 1) /
+            chunks.length) *
+            18
+        ),
+      "VOICE",
+      `Myanmar voice ${i + 1}/${chunks.length}`
+    );
 
-      const base64List =
-        await googleTTS.getAllAudioBase64(
-          text,
-          {
-            lang: "my",
-            slow: false,
-
-            host:
-              "https://translate.google.com"
-          }
-        );
-
-      if (
-        !Array.isArray(base64List) ||
-        !base64List.length
-      ) {
-        throw new Error(
-          "TTS returned empty audio"
-        );
-      }
-
-      for (const item of base64List) {
-
-        if (typeof item === "string") {
-
-          audioParts.push(
-            Buffer.from(item, "base64")
-          );
-
-        } else if (item?.base64) {
-
-          audioParts.push(
-            Buffer.from(
-              item.base64,
-              "base64"
-            )
-          );
+    const audioBase64 =
+      await googleTTS.getAllAudioBase64(
+        chunk,
+        {
+          lang: "my",
+          slow: false,
+          host: "https://translate.google.com"
         }
-      }
-
-    } catch (error) {
-
-      console.error(
-        `[TTS] Chunk ${i + 1} failed`,
-        error.message
       );
 
+    if (
+      !audioBase64 ||
+      !Array.isArray(audioBase64)
+    ) {
       throw new Error(
-        `Myanmar voice generation failed at chunk ${
-          i + 1
-        }: ${error.message}`
+        "Myanmar TTS returned invalid audio"
       );
     }
 
-    const progress =
-      65 +
-      Math.round(
-        ((i + 1) / chunks.length) * 12
+    for (
+      let j = 0;
+      j < audioBase64.length;
+      j++
+    ) {
+      const item =
+        audioBase64[j];
+
+      const filename =
+        `tts-${i}-${j}.mp3`;
+
+      const audioPath =
+        path.join(
+          jobTemp,
+          filename
+        );
+
+      const base64 =
+        typeof item === "string"
+          ? item
+          : item.base64;
+
+      if (!base64) {
+        continue;
+      }
+
+      fs.writeFileSync(
+        audioPath,
+        Buffer.from(
+          base64,
+          "base64"
+        )
       );
 
-    updateJob(jobId, {
-      progress,
-      stage: "VOICE",
-      message:
-        `Myanmar narration ${i + 1}/${chunks.length}`
-    });
+      audioFiles.push(
+        audioPath
+      );
+    }
   }
 
-  const outputFile =
-    path.join(
-      OUTPUT_DIR,
-      `${jobId}-narration.mp3`
+  if (!audioFiles.length) {
+    throw new Error(
+      "No TTS audio files were created"
     );
+  }
+
+  const concatFile =
+    path.join(
+      jobTemp,
+      "audio-list.txt"
+    );
+
+  const concatContent =
+    audioFiles
+      .map(file => {
+        const safe =
+          file
+            .replace(/\\/g, "/")
+            .replace(/'/g, "'\\''");
+
+        return `file '${safe}'`;
+      })
+      .join("\n");
 
   fs.writeFileSync(
-    outputFile,
-    Buffer.concat(audioParts)
+    concatFile,
+    concatContent,
+    "utf8"
   );
 
-  if (
-    !fs.existsSync(outputFile) ||
-    fs.statSync(outputFile).size === 0
-  ) {
-    throw new Error(
-      "Narration MP3 was not created"
+  const finalAudio =
+    path.join(
+      jobTemp,
+      "narration.mp3"
     );
-  }
 
-  updateJob(jobId, {
-    progress: 78,
-    stage: "VOICE",
-    message: "Myanmar narration ready",
-    narrationFile: outputFile
-  });
+  setProgress(
+    id,
+    74,
+    "VOICE",
+    "Combining Myanmar narration..."
+  );
 
-  return outputFile;
+  await runFFmpeg(
+    [
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      concatFile,
+      "-c:a",
+      "libmp3lame",
+      "-b:a",
+      "128k",
+      finalAudio
+    ],
+    {
+      timeoutMs: 5 * 60 * 1000,
+      label: "TTS audio merge"
+    }
+  );
+
+  return {
+    audioPath: finalAudio,
+    tempDir: jobTemp,
+    chunks
+  };
 }
 
-/* =========================================================
-   SRT
-========================================================= */
+/*
+=========================================================
+ SRT
+=========================================================
+*/
 
 function formatSrtTime(seconds) {
-
   const totalMs =
     Math.max(
       0,
@@ -802,47 +1029,40 @@ function formatSrtTime(seconds) {
   const totalSeconds =
     Math.floor(totalMs / 1000);
 
-  const s =
+  const sec =
     totalSeconds % 60;
 
   const totalMinutes =
     Math.floor(totalSeconds / 60);
 
-  const m =
+  const min =
     totalMinutes % 60;
 
-  const h =
+  const hours =
     Math.floor(totalMinutes / 60);
 
-  const pad = (n, size) =>
-    String(n).padStart(size, "0");
+  const pad = n =>
+    String(n).padStart(2, "0");
 
-  return (
-    `${pad(h, 2)}:` +
-    `${pad(m, 2)}:` +
-    `${pad(s, 2)},` +
-    `${pad(ms, 3)}`
-  );
+  return `${pad(hours)}:${pad(min)}:${pad(sec)},${String(
+    ms
+  ).padStart(3, "0")}`;
 }
 
-function buildSrt(script) {
-
-  const chunks =
-    splitText(script, 90);
-
-  let result = "";
-
-  const secondsPerCharacter = 0.055;
+function createSRT(chunks) {
+  let output = "";
 
   let currentTime = 0;
 
-  chunks.forEach((text, index) => {
+  const averageSecondsPerCharacter =
+    0.065;
 
+  chunks.forEach((chunk, index) => {
     const duration =
       Math.max(
-        2.2,
-        text.length *
-          secondsPerCharacter
+        2,
+        chunk.length *
+          averageSecondsPerCharacter
       );
 
     const start =
@@ -851,509 +1071,845 @@ function buildSrt(script) {
     const end =
       currentTime + duration;
 
-    result +=
+    output +=
       `${index + 1}\n` +
       `${formatSrtTime(start)} --> ${formatSrtTime(end)}\n` +
-      `${text}\n\n`;
+      `${chunk.trim()}\n\n`;
 
     currentTime = end;
   });
 
-  return result;
+  return output;
 }
 
-function createSrtFile(jobId, script) {
+/*
+=========================================================
+ FFPROBE
+=========================================================
+*/
 
-  updateJob(jobId, {
-    progress: 82,
-    stage: "SUBTITLE",
-    message: "Creating Myanmar subtitles..."
-  });
-
-  const srt =
-    buildSrt(script);
-
-  const outputFile =
-    path.join(
-      OUTPUT_DIR,
-      `${jobId}-subtitle.srt`
-    );
-
-  fs.writeFileSync(
-    outputFile,
-    "\ufeff" + srt,
-    "utf8"
-  );
-
-  updateJob(jobId, {
-    progress: 86,
-    stage: "SUBTITLE",
-    message: "Subtitle ready",
-    subtitleFile: outputFile
-  });
-
-  return outputFile;
-}
-
-/* =========================================================
-   FFPROBE
-========================================================= */
-
-function getVideoDuration(file) {
-
-  return new Promise((resolve, reject) => {
-
-    const args = [
-      "-v",
-      "error",
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "default=noprint_wrappers=1:nokey=1",
-      file
-    ];
-
-    const proc =
-      spawn(
-        ffprobePath,
-        args
-      );
-
-    let output = "";
-    let errorOutput = "";
-
-    proc.stdout.on(
-      "data",
-      (data) => {
-        output += data.toString();
-      }
-    );
-
-    proc.stderr.on(
-      "data",
-      (data) => {
-        errorOutput += data.toString();
-      }
-    );
-
-    proc.on(
-      "error",
-      reject
-    );
-
-    proc.on(
-      "close",
-      (code) => {
-
-        if (code !== 0) {
-          reject(
-            new Error(
-              errorOutput ||
-              "ffprobe failed"
-            )
-          );
-
-          return;
-        }
-
-        const duration =
-          parseFloat(
-            output.trim()
-          );
-
-        if (!Number.isFinite(duration)) {
-          reject(
-            new Error(
-              "Could not detect video duration"
-            )
-          );
-
-          return;
-        }
-
-        resolve(duration);
-      }
-    );
-  });
-}
-
-/* =========================================================
-   FFMPEG RENDER
-========================================================= */
-
-function renderVideo(
-  jobId,
-  inputVideo,
-  narrationFile,
-  subtitleFile,
-  outputFile
-) {
-
+function getVideoDuration(videoPath) {
   return new Promise(
-    async (resolve, reject) => {
-
-      let duration = 0;
-
-      try {
-        duration =
-          await getVideoDuration(
-            inputVideo
-          );
-      } catch (error) {
-
-        console.log(
-          "Duration detection warning:",
-          error.message
-        );
-      }
-
-      updateJob(jobId, {
-        progress: 88,
-        stage: "RENDER",
-        message: "Rendering final MP4..."
-      });
-
-      console.log(
-        `[FFMPEG] Starting render for ${jobId}`
-      );
-
-      const subtitleEscaped =
-        subtitleFile
-          .replace(/\\/g, "\\\\")
-          .replace(/:/g, "\\:")
-          .replace(/'/g, "\\'");
-
-      const filter =
-        `subtitles='${subtitleEscaped}':force_style='FontName=Noto Sans,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=35'`;
-
+    (resolve, reject) => {
       const args = [
-        "-y",
-
-        "-i",
-        inputVideo,
-
-        "-i",
-        narrationFile,
-
-        "-map",
-        "0:v:0",
-
-        "-map",
-        "1:a:0",
-
-        "-vf",
-        filter,
-
-        "-c:v",
-        "libx264",
-
-        "-preset",
-        "veryfast",
-
-        "-crf",
-        "23",
-
-        "-pix_fmt",
-        "yuv420p",
-
-        "-c:a",
-        "aac",
-
-        "-b:a",
-        "128k",
-
-        "-shortest",
-
-        "-movflags",
-        "+faststart",
-
-        outputFile
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        videoPath
       ];
 
-      const ffmpeg =
+      const proc =
         spawn(
-          ffmpegPath,
+          ffprobeStatic.path,
           args
         );
 
-      let stderr = "";
-      let lastProgress = 88;
+      let output = "";
+      let error = "";
 
-      ffmpeg.stderr.on(
+      proc.stdout.on(
         "data",
-        (data) => {
+        data => {
+          output += data.toString();
+        }
+      );
 
-          const text =
-            data.toString();
+      proc.stderr.on(
+        "data",
+        data => {
+          error += data.toString();
+        }
+      );
 
-          stderr += text;
+      proc.on(
+        "error",
+        reject
+      );
 
-          const match =
-            text.match(
-              /time=(\d+):(\d+):(\d+(?:\.\d+)?)/
+      proc.on(
+        "close",
+        code => {
+          if (code !== 0) {
+            reject(
+              new Error(
+                `ffprobe failed: ${error}`
+              )
+            );
+            return;
+          }
+
+          const duration =
+            Number(
+              output.trim()
             );
 
           if (
-            match &&
-            duration > 0
+            !Number.isFinite(
+              duration
+            )
           ) {
+            reject(
+              new Error(
+                "Could not determine video duration"
+              )
+            );
+            return;
+          }
 
-            const h =
-              Number(match[1]);
+          resolve(duration);
+        }
+      );
+    }
+  );
+}
 
-            const m =
-              Number(match[2]);
+/*
+=========================================================
+ FFMPEG RUNNER
+=========================================================
+*/
 
-            const s =
-              Number(match[3]);
+function runFFmpeg(
+  args,
+  options = {}
+) {
+  const {
+    timeoutMs = 20 * 60 * 1000,
+    label = "FFmpeg",
+    onProgress
+  } = options;
 
-            const current =
-              h * 3600 +
-              m * 60 +
-              s;
+  return new Promise(
+    (resolve, reject) => {
+      console.log(
+        `[FFMPEG] Starting: ${label}`
+      );
 
-            const ratio =
-              Math.min(
-                1,
-                current / duration
-              );
+      const proc =
+        spawn(
+          ffmpegPath,
+          args,
+          {
+            windowsHide: true
+          }
+        );
 
-            const progress =
-              Math.min(
-                99,
-                88 +
-                Math.round(
-                  ratio * 11
-                )
-              );
+      let stderr = "";
+      let stdout = "";
 
+      let finished = false;
+
+      const timer =
+        setTimeout(() => {
+          if (finished) return;
+
+          console.log(
+            `[FFMPEG] TIMEOUT: ${label}`
+          );
+
+          try {
+            proc.kill("SIGKILL");
+          } catch (e) {}
+
+          reject(
+            new Error(
+              `${label} timed out`
+            )
+          );
+        }, timeoutMs);
+
+      proc.stdout.on(
+        "data",
+        data => {
+          const text =
+            data.toString();
+
+          stdout += text;
+
+          const lines =
+            text
+              .split(/\r?\n/)
+              .filter(Boolean);
+
+          for (const line of lines) {
             if (
-              progress >
-              lastProgress
+              line.startsWith(
+                "out_time_ms="
+              )
             ) {
+              const value =
+                Number(
+                  line.split("=")[1]
+                );
 
-              lastProgress =
-                progress;
-
-              updateJob(jobId, {
-                progress,
-                stage: "RENDER",
-                message:
-                  `Rendering final MP4 ${progress}%`
-              });
+              if (
+                Number.isFinite(value) &&
+                onProgress
+              ) {
+                onProgress(
+                  value / 1000000
+                );
+              }
             }
           }
         }
       );
 
-      ffmpeg.on(
-        "error",
-        (error) => {
+      proc.stderr.on(
+        "data",
+        data => {
+          const text =
+            data.toString();
 
-          reject(
-            new Error(
-              `FFmpeg process error: ${error.message}`
-            )
-          );
+          stderr += text;
+
+          if (
+            stderr.length >
+            20000
+          ) {
+            stderr =
+              stderr.slice(
+                -20000
+              );
+          }
+
+          const match =
+            text.match(
+              /time=(\d+):(\d+):(\d+(?:\.\d+)?)/ 
+            );
+
+          if (
+            match &&
+            onProgress
+          ) {
+            const seconds =
+              Number(match[1]) * 3600 +
+              Number(match[2]) * 60 +
+              Number(match[3]);
+
+            onProgress(seconds);
+          }
         }
       );
 
-      ffmpeg.on(
+      proc.on(
+        "error",
+        error => {
+          if (finished) return;
+
+          finished = true;
+
+          clearTimeout(timer);
+
+          reject(error);
+        }
+      );
+
+      proc.on(
         "close",
-        (code) => {
+        code => {
+          if (finished) return;
 
-          if (code !== 0) {
+          finished = true;
 
-            console.error(
-              "[FFMPEG ERROR]",
-              stderr.slice(-8000)
+          clearTimeout(timer);
+
+          if (code === 0) {
+            console.log(
+              `[FFMPEG] SUCCESS: ${label}`
             );
 
-            reject(
-              new Error(
-                `FFmpeg render failed with code ${code}`
-              )
-            );
-
-            return;
-          }
-
-          if (
-            !fs.existsSync(outputFile)
-          ) {
-
-            reject(
-              new Error(
-                "FFmpeg finished but MP4 file was not created"
-              )
-            );
-
-            return;
-          }
-
-          const size =
-            fs.statSync(
-              outputFile
-            ).size;
-
-          if (size < 1000) {
-
-            reject(
-              new Error(
-                "Generated MP4 is invalid or empty"
-              )
-            );
+            resolve({
+              stdout,
+              stderr
+            });
 
             return;
           }
 
           console.log(
-            `[FFMPEG] Render complete ${outputFile} (${size} bytes)`
+            `[FFMPEG] FAILED: ${label} code=${code}`
           );
 
-          resolve();
+          reject(
+            new Error(
+              `FFmpeg failed (${label})\n${stderr.slice(
+                -8000
+              )}`
+            )
+          );
         }
       );
     }
   );
 }
 
-/* =========================================================
-   FALLBACK RENDER WITHOUT SUBTITLE BURN-IN
-========================================================= */
+/*
+=========================================================
+ FINAL VIDEO RENDER
+=========================================================
+*/
 
-function renderVideoWithoutSubtitle(
-  jobId,
+async function renderFinalVideo(
+  id,
   inputVideo,
-  narrationFile,
-  outputFile
+  narrationAudio,
+  srtPath
 ) {
+  console.log(
+    `[FFMPEG] Starting render for ${id}`
+  );
 
-  return new Promise(
-    async (resolve, reject) => {
+  const duration =
+    await getVideoDuration(
+      inputVideo
+    );
 
-      updateJob(jobId, {
-        progress: 90,
-        stage: "RENDER",
-        message:
-          "Subtitle burn-in unavailable — rendering clean MP4..."
-      });
+  console.log(
+    `[FFMPEG] Video duration: ${duration}s`
+  );
 
-      const args = [
-        "-y",
+  const outputPath =
+    path.join(
+      OUTPUT_DIR,
+      `${id}-recap.mp4`
+    );
 
-        "-i",
-        inputVideo,
+  /*
+  -------------------------------------------------------
+  ASS SUBTITLE FILE
+  -------------------------------------------------------
+  */
 
-        "-i",
-        narrationFile,
+  const subtitlePath =
+    srtPath;
 
-        "-map",
-        "0:v:0",
+  setProgress(
+    id,
+    75,
+    "RENDER",
+    "Starting FFmpeg video render..."
+  );
 
-        "-map",
-        "1:a:0",
+  let lastProgress = 75;
 
-        "-c:v",
-        "libx264",
+  const renderArgs = [
+    "-y",
 
-        "-preset",
-        "veryfast",
+    "-i",
+    inputVideo,
 
-        "-crf",
-        "23",
+    "-i",
+    narrationAudio,
 
-        "-pix_fmt",
-        "yuv420p",
+    "-map",
+    "0:v:0",
 
-        "-c:a",
-        "aac",
+    "-map",
+    "1:a:0",
 
-        "-b:a",
-        "128k",
+    "-vf",
+    `subtitles=${subtitlePath.replace(
+      /\\/g,
+      "/"
+    ).replace(
+      /:/g,
+      "\\:"
+    )}`,
 
-        "-shortest",
+    "-c:v",
+    "libx264",
 
-        "-movflags",
-        "+faststart",
+    "-preset",
+    "veryfast",
 
-        outputFile
-      ];
+    "-crf",
+    "23",
 
-      const ffmpeg =
-        spawn(
-          ffmpegPath,
-          args
-        );
+    "-pix_fmt",
+    "yuv420p",
 
-      let stderr = "";
+    "-c:a",
+    "aac",
 
-      ffmpeg.stderr.on(
-        "data",
-        (data) => {
-          stderr += data.toString();
-        }
-      );
+    "-b:a",
+    "128k",
 
-      ffmpeg.on(
-        "error",
-        reject
-      );
+    "-shortest",
 
-      ffmpeg.on(
-        "close",
-        (code) => {
+    "-movflags",
+    "+faststart",
 
-          if (code !== 0) {
+    "-progress",
+    "pipe:1",
 
-            console.error(
-              "[FFMPEG FALLBACK ERROR]",
-              stderr.slice(-5000)
-            );
+    "-nostats",
 
-            reject(
-              new Error(
-                `Fallback FFmpeg failed with code ${code}`
-              )
-            );
+    outputPath
+  ];
 
+  try {
+    await runFFmpeg(
+      renderArgs,
+      {
+        timeoutMs:
+          20 * 60 * 1000,
+
+        label:
+          "Final MP4 with subtitles",
+
+        onProgress: seconds => {
+          if (
+            !Number.isFinite(
+              seconds
+            )
+          ) {
             return;
           }
 
           if (
-            !fs.existsSync(outputFile)
+            duration <= 0
           ) {
-
-            reject(
-              new Error(
-                "Fallback MP4 was not created"
-              )
-            );
-
             return;
           }
 
-          resolve();
+          const ratio =
+            Math.max(
+              0,
+              Math.min(
+                1,
+                seconds /
+                  duration
+              )
+            );
+
+          const progress =
+            75 +
+            Math.floor(
+              ratio * 23
+            );
+
+          if (
+            progress >
+            lastProgress
+          ) {
+            lastProgress =
+              progress;
+
+            setProgress(
+              id,
+              Math.min(
+                98,
+                progress
+              ),
+              "RENDER",
+              `Rendering final video... ${Math.min(
+                100,
+                Math.round(
+                  ratio * 100
+                )
+              )}%`
+            );
+          }
         }
+      }
+    );
+
+    if (
+      !fs.existsSync(
+        outputPath
+      )
+    ) {
+      throw new Error(
+        "FFmpeg completed but output MP4 was not found"
       );
     }
-  );
+
+    return outputPath;
+  } catch (error) {
+    console.log(
+      "[FFMPEG] Subtitle render failed"
+    );
+
+    console.log(
+      error.message
+    );
+
+    /*
+    -----------------------------------------------------
+    FALLBACK WITHOUT BURNED SUBTITLE
+    -----------------------------------------------------
+    */
+
+    setProgress(
+      id,
+      80,
+      "RENDER",
+      "Subtitle render failed. Creating clean MP4..."
+    );
+
+    const fallbackPath =
+      path.join(
+        OUTPUT_DIR,
+        `${id}-recap-clean.mp4`
+      );
+
+    const fallbackArgs = [
+      "-y",
+
+      "-i",
+      inputVideo,
+
+      "-i",
+      narrationAudio,
+
+      "-map",
+      "0:v:0",
+
+      "-map",
+      "1:a:0",
+
+      "-c:v",
+      "libx264",
+
+      "-preset",
+      "veryfast",
+
+      "-crf",
+      "23",
+
+      "-pix_fmt",
+      "yuv420p",
+
+      "-c:a",
+      "aac",
+
+      "-b:a",
+      "128k",
+
+      "-shortest",
+
+      "-movflags",
+      "+faststart",
+
+      "-progress",
+      "pipe:1",
+
+      "-nostats",
+
+      fallbackPath
+    ];
+
+    await runFFmpeg(
+      fallbackArgs,
+      {
+        timeoutMs:
+          20 * 60 * 1000,
+
+        label:
+          "Fallback clean MP4",
+
+        onProgress: seconds => {
+          if (
+            !Number.isFinite(
+              seconds
+            )
+          ) {
+            return;
+          }
+
+          if (
+            duration <= 0
+          ) {
+            return;
+          }
+
+          const ratio =
+            Math.max(
+              0,
+              Math.min(
+                1,
+                seconds /
+                  duration
+              )
+            );
+
+          const progress =
+            80 +
+            Math.floor(
+              ratio * 17
+            );
+
+          setProgress(
+            id,
+            Math.min(
+              97,
+              progress
+            ),
+            "RENDER",
+            `Creating clean MP4... ${Math.round(
+              ratio * 100
+            )}%`
+          );
+        }
+      }
+    );
+
+    if (
+      !fs.existsSync(
+        fallbackPath
+      )
+    ) {
+      throw new Error(
+        "Fallback MP4 was not created"
+      );
+    }
+
+    return fallbackPath;
+  }
 }
 
-/* =========================================================
-   HEALTH
-========================================================= */
+/*
+=========================================================
+ JOB PROCESS
+=========================================================
+*/
+
+async function processJob(
+  id,
+  videoPath,
+  mimeType
+) {
+  const job =
+    jobs.get(id);
+
+  if (!job) {
+    throw new Error(
+      "Job not found"
+    );
+  }
+
+  let geminiFile = null;
+  let narration = null;
+
+  try {
+    /*
+    -----------------------------------------------------
+    STEP 1
+    -----------------------------------------------------
+    */
+
+    setProgress(
+      id,
+      5,
+      "START",
+      "Preparing video..."
+    );
+
+    /*
+    -----------------------------------------------------
+    STEP 2
+    -----------------------------------------------------
+    */
+
+    geminiFile =
+      await uploadVideoToGemini(
+        id,
+        videoPath,
+        mimeType
+      );
+
+    /*
+    -----------------------------------------------------
+    STEP 3
+    -----------------------------------------------------
+    */
+
+    const analysis =
+      await analyzeVideoWithGemini(
+        id,
+        geminiFile
+      );
+
+    updateJob(id, {
+      analysis
+    });
+
+    /*
+    -----------------------------------------------------
+    STEP 4
+    -----------------------------------------------------
+    */
+
+    const script =
+      cleanScript(
+        await generateMyanmarScript(
+          id,
+          analysis
+        )
+      );
+
+    updateJob(id, {
+      script
+    });
+
+    setProgress(
+      id,
+      55,
+      "VOICE",
+      "Myanmar narration script ready..."
+    );
+
+    /*
+    -----------------------------------------------------
+    STEP 5
+    -----------------------------------------------------
+    */
+
+    narration =
+      await createMyanmarVoice(
+        id,
+        script
+      );
+
+    /*
+    -----------------------------------------------------
+    STEP 6
+    -----------------------------------------------------
+    */
+
+    setProgress(
+      id,
+      74,
+      "SUBTITLE",
+      "Creating subtitles..."
+    );
+
+    const srtContent =
+      createSRT(
+        narration.chunks
+      );
+
+    const srtPath =
+      path.join(
+        OUTPUT_DIR,
+        `${id}.srt`
+      );
+
+    fs.writeFileSync(
+      srtPath,
+      srtContent,
+      "utf8"
+    );
+
+    /*
+    -----------------------------------------------------
+    STEP 7
+    -----------------------------------------------------
+    */
+
+    const finalVideo =
+      await renderFinalVideo(
+        id,
+        videoPath,
+        narration.audioPath,
+        srtPath
+      );
+
+    /*
+    -----------------------------------------------------
+    FINAL
+    -----------------------------------------------------
+    */
+
+    const videoUrl =
+      `/outputs/${path.basename(
+        finalVideo
+      )}`;
+
+    const subtitleUrl =
+      `/outputs/${path.basename(
+        srtPath
+      )}`;
+
+    setProgress(
+      id,
+      100,
+      "DONE",
+      "RECAP VIDEO READY",
+      {
+        status: "completed",
+        videoUrl,
+        subtitleUrl,
+        completedAt:
+          new Date().toISOString()
+      }
+    );
+
+    console.log(
+      `================================================`
+    );
+
+    console.log(
+      `[JOB COMPLETE] ${id}`
+    );
+
+    console.log(
+      `Video: ${videoUrl}`
+    );
+
+    console.log(
+      `Subtitle: ${subtitleUrl}`
+    );
+
+    console.log(
+      `================================================`
+    );
+  } catch (error) {
+    console.error(
+      "JOB FAILED:",
+      error
+    );
+
+    updateJob(id, {
+      status: "failed",
+      error:
+        error?.message ||
+        String(error),
+      failedAt:
+        new Date().toISOString()
+    });
+
+    setProgress(
+      id,
+      job.progress || 0,
+      "ERROR",
+      error?.message ||
+        "Job failed"
+    );
+  }
+}
+
+/*
+=========================================================
+ HEALTH
+=========================================================
+*/
 
 app.get(
   "/api/health",
   (req, res) => {
-
     res.json({
       ok: true,
 
-      app: "RECAP ONE CLIP",
+      app:
+        "RECAP ONE CLIP",
 
-      version: "3.0.0",
+      version:
+        "3.1.0",
 
       gemini:
         Boolean(GEMINI_API_KEY),
@@ -1368,7 +1924,9 @@ app.get(
         Boolean(ffmpegPath),
 
       ffprobe:
-        Boolean(ffprobePath),
+        Boolean(
+          ffprobeStatic?.path
+        ),
 
       time:
         new Date().toISOString()
@@ -1376,428 +1934,245 @@ app.get(
   }
 );
 
-/* =========================================================
-   ROOT
-========================================================= */
+/*
+=========================================================
+ ROOT
+=========================================================
+*/
 
 app.get(
   "/",
   (req, res) => {
-
-    const indexFile =
-      path.join(
-        ROOT_DIR,
-        "index.html"
-      );
-
-    if (
-      fs.existsSync(indexFile)
-    ) {
-
-      res.sendFile(
-        indexFile
-      );
-
-      return;
-    }
-
     res.json({
-      app: "RECAP ONE CLIP",
-      version: "3.0.0",
-      status: "running"
+      ok: true,
+      app:
+        "RECAP ONE CLIP",
+      version:
+        "3.1.0",
+      message:
+        "Myanmar AI Recap Studio is running"
     });
   }
 );
 
-/* =========================================================
-   UPLOAD
-========================================================= */
+/*
+=========================================================
+ UPLOAD
+=========================================================
+*/
 
 app.post(
   "/api/upload",
   upload.single("video"),
-  async (req, res) => {
-
+  (req, res) => {
     try {
-
       if (!req.file) {
-
-        return res.status(400).json({
-          error:
-            "No video file uploaded"
-        });
+        return res
+          .status(400)
+          .json({
+            error:
+              "No video uploaded"
+          });
       }
 
-      const job =
-        createJob(
-          req.file
-        );
+      const id =
+        makeId();
+
+      jobs.set(id, {
+        id,
+
+        status:
+          "uploaded",
+
+        progress: 0,
+
+        stage:
+          "UPLOAD",
+
+        message:
+          "Video uploaded. Ready to analyze.",
+
+        originalName:
+          req.file.originalname,
+
+        filePath:
+          req.file.path,
+
+        mimeType:
+          req.file.mimetype,
+
+        createdAt:
+          new Date().toISOString(),
+
+        updatedAt:
+          new Date().toISOString()
+      });
+
+      console.log(
+        `[UPLOAD] ${id} ${req.file.originalname}`
+      );
 
       res.json({
         ok: true,
 
-        jobId:
-          job.id,
+        id,
 
-        status:
-          job.status,
+        jobId: id,
 
-        progress:
-          job.progress,
+        filename:
+          req.file.filename,
 
-        fileName:
-          job.originalName
+        originalName:
+          req.file.originalname,
+
+        size:
+          req.file.size,
+
+        message:
+          "Video uploaded successfully"
       });
-
     } catch (error) {
-
       console.error(
-        "Upload error:",
+        "[UPLOAD ERROR]",
         error
       );
 
-      res.status(500).json({
-        error:
-          error.message
-      });
+      res
+        .status(500)
+        .json({
+          error:
+            error.message
+        });
     }
   }
 );
 
-/* =========================================================
-   GENERATE
-========================================================= */
+/*
+=========================================================
+ GENERATE
+=========================================================
+*/
 
 app.post(
   "/api/generate/:id",
   async (req, res) => {
+    const id =
+      req.params.id;
 
     const job =
-      jobs.get(
-        req.params.id
-      );
+      jobs.get(id);
 
     if (!job) {
+      return res
+        .status(404)
+        .json({
+          error:
+            "Job not found"
+        });
+    }
 
-      return res.status(404).json({
-        error:
-          "Job not found"
+    if (
+      job.status ===
+        "processing"
+    ) {
+      return res.json({
+        ok: true,
+        id,
+        status:
+          "processing",
+        message:
+          "Job is already processing"
       });
     }
 
     if (
-      job.status === "processing"
+      job.status ===
+      "completed"
     ) {
-
       return res.json({
         ok: true,
-        message:
-          "Job is already processing",
-        jobId:
-          job.id
+        id,
+        status:
+          "completed",
+        videoUrl:
+          job.videoUrl,
+        subtitleUrl:
+          job.subtitleUrl
       });
     }
 
-    job.status =
-      "processing";
+    updateJob(id, {
+      status:
+        "processing",
 
-    job.notes =
-      req.body?.notes || "";
+      progress:
+        1,
 
-    job.voiceStyle =
-      req.body?.voiceStyle ||
-      "natural";
+      stage:
+        "START",
 
-    updateJob(
-      job.id,
-      {
-        status: "processing",
-        progress: 5,
-        stage: "ANALYZE",
-        message:
-          "Starting AI video analysis..."
-      }
-    );
+      message:
+        "Starting recap generation..."
+    });
 
     res.json({
       ok: true,
 
-      jobId:
-        job.id,
+      id,
 
       status:
-        "processing"
+        "processing",
+
+      message:
+        "Recap generation started"
     });
 
-    processJob(job.id)
-      .catch(
-        (error) => {
+    /*
+    IMPORTANT:
+    Do not await here.
+    Let Render continue the job.
+    */
 
-          console.error(
-            `[JOB ${job.id}] FAILED`,
-            error
-          );
-
-          updateJob(
-            job.id,
-            {
-              status: "error",
-
-              progress:
-                Math.min(
-                  99,
-                  job.progress || 0
-                ),
-
-              stage:
-                "ERROR",
-
-              message:
-                error.message,
-
-              error:
-                error.message
-            }
-          );
-        }
+    processJob(
+      id,
+      job.filePath,
+      job.mimeType
+    ).catch(error => {
+      console.error(
+        "[PROCESS ERROR]",
+        error
       );
+    });
   }
 );
 
-/* =========================================================
-   PROCESS JOB
-========================================================= */
-
-async function processJob(
-  jobId
-) {
-
-  const job =
-    jobs.get(jobId);
-
-  if (!job) {
-    throw new Error(
-      "Job not found"
-    );
-  }
-
-  let geminiFile = null;
-
-  try {
-
-    /* -----------------------------------------
-       1. CHECK VIDEO
-    ----------------------------------------- */
-
-    updateJob(jobId, {
-      progress: 8,
-      stage: "ANALYZE",
-      message:
-        "Checking uploaded video..."
-    });
-
-    if (
-      !fs.existsSync(
-        job.file
-      )
-    ) {
-
-      throw new Error(
-        "Uploaded video file no longer exists"
-      );
-    }
-
-    /* -----------------------------------------
-       2. UPLOAD TO GEMINI
-    ----------------------------------------- */
-
-    geminiFile =
-      await uploadVideoToGemini(
-        jobId,
-        job.file,
-        job.mimeType
-      );
-
-    /* -----------------------------------------
-       3. ANALYZE
-    ----------------------------------------- */
-
-    const analysis =
-      await analyzeVideo(
-        jobId,
-        geminiFile,
-        job.notes
-      );
-
-    updateJob(jobId, {
-      analysis,
-      progress: 45,
-      stage: "SCRIPT",
-      message:
-        "Video analysis completed"
-    });
-
-    /* -----------------------------------------
-       4. SCRIPT
-    ----------------------------------------- */
-
-    const script =
-      await generateMyanmarScript(
-        jobId,
-        analysis,
-        job.notes
-      );
-
-    updateJob(jobId, {
-      script,
-      progress: 60,
-      stage: "VOICE",
-      message:
-        "Myanmar recap script completed"
-    });
-
-    /* -----------------------------------------
-       5. VOICE
-    ----------------------------------------- */
-
-    const narrationFile =
-      await createMyanmarVoice(
-        jobId,
-        script
-      );
-
-    /* -----------------------------------------
-       6. SUBTITLE
-    ----------------------------------------- */
-
-    const subtitleFile =
-      createSrtFile(
-        jobId,
-        script
-      );
-
-    /* -----------------------------------------
-       7. RENDER
-    ----------------------------------------- */
-
-    const outputFile =
-      path.join(
-        OUTPUT_DIR,
-        `${jobId}-recap.mp4`
-      );
-
-    updateJob(jobId, {
-      progress: 88,
-      stage: "RENDER",
-      message:
-        "Starting final MP4 render..."
-    });
-
-    try {
-
-      await renderVideo(
-        jobId,
-        job.file,
-        narrationFile,
-        subtitleFile,
-        outputFile
-      );
-
-    } catch (renderError) {
-
-      console.error(
-        `[JOB ${jobId}] Subtitle render failed:`,
-        renderError.message
-      );
-
-      /*
-        Subtitle burn-in failed.
-        Do not lose the entire job.
-        Render a clean MP4 instead.
-      */
-
-      await renderVideoWithoutSubtitle(
-        jobId,
-        job.file,
-        narrationFile,
-        outputFile
-      );
-    }
-
-    /* -----------------------------------------
-       8. COMPLETE
-    ----------------------------------------- */
-
-    updateJob(jobId, {
-
-      status:
-        "completed",
-
-      progress:
-        100,
-
-      stage:
-        "READY",
-
-      message:
-        "RECAP VIDEO READY",
-
-      outputFile,
-
-      outputUrl:
-        `/outputs/${path.basename(outputFile)}`,
-
-      subtitleUrl:
-        `/outputs/${path.basename(subtitleFile)}`,
-
-      subtitleFile,
-
-      narrationFile,
-
-      error:
-        null
-    });
-
-    console.log(
-      `[JOB ${jobId}] COMPLETED`
-    );
-
-  } catch (error) {
-
-    console.error(
-      `[JOB ${jobId}] PROCESS ERROR`,
-      error
-    );
-
-    throw error;
-  }
-}
-
-/* =========================================================
-   STATUS
-========================================================= */
+/*
+=========================================================
+ STATUS
+=========================================================
+*/
 
 app.get(
   "/api/status/:id",
   (req, res) => {
-
     const job =
       jobs.get(
         req.params.id
       );
 
     if (!job) {
-
-      return res.status(404).json({
-        error:
-          "Job not found"
-      });
+      return res
+        .status(404)
+        .json({
+          error:
+            "Job not found"
+        });
     }
 
     res.json({
       ok: true,
 
-      jobId:
+      id:
         job.id,
 
       status:
@@ -1812,120 +2187,155 @@ app.get(
       message:
         job.message,
 
-      outputUrl:
-        job.outputUrl
-          ? `/outputs/${path.basename(job.outputFile)}`
-          : null,
-
-      subtitleUrl:
-        job.subtitleFile
-          ? `/outputs/${path.basename(job.subtitleFile)}`
-          : null,
+      originalName:
+        job.originalName,
 
       modelUsed:
-        job.modelUsed,
+        job.modelUsed ||
+        null,
 
-      attempts:
-        job.attempts,
+      attempt:
+        job.attempt ||
+        null,
+
+      videoUrl:
+        job.videoUrl ||
+        null,
+
+      subtitleUrl:
+        job.subtitleUrl ||
+        null,
 
       error:
-        job.error
+        job.error ||
+        null,
+
+      createdAt:
+        job.createdAt,
+
+      updatedAt:
+        job.updatedAt,
+
+      completedAt:
+        job.completedAt ||
+        null,
+
+      failedAt:
+        job.failedAt ||
+        null
     });
   }
 );
 
-/* =========================================================
-   404 API
-========================================================= */
+/*
+=========================================================
+ JOB LIST
+=========================================================
+*/
 
-app.use(
-  "/api",
+app.get(
+  "/api/jobs",
   (req, res) => {
+    const list =
+      Array.from(
+        jobs.values()
+      )
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt) -
+            new Date(a.createdAt)
+        )
+        .slice(0, 50)
+        .map(job => ({
+          id:
+            job.id,
 
-    res.status(404).json({
-      error:
-        "API endpoint not found"
+          status:
+            job.status,
+
+          progress:
+            job.progress,
+
+          stage:
+            job.stage,
+
+          message:
+            job.message,
+
+          originalName:
+            job.originalName,
+
+          videoUrl:
+            job.videoUrl ||
+            null,
+
+          createdAt:
+            job.createdAt
+        }));
+
+    res.json({
+      ok: true,
+      jobs: list
     });
   }
 );
 
-/* =========================================================
-   ERROR HANDLER
-========================================================= */
+/*
+=========================================================
+ ERROR HANDLER
+=========================================================
+*/
 
 app.use(
-  (err, req, res, next) => {
-
+  (
+    error,
+    req,
+    res,
+    next
+  ) => {
     console.error(
-      "GLOBAL ERROR:",
-      err
+      "[SERVER ERROR]",
+      error
     );
 
     if (
-      err instanceof multer.MulterError
+      error instanceof
+      multer.MulterError
     ) {
-
-      return res.status(400).json({
-        error:
-          `Upload error: ${err.message}`
-      });
+      return res
+        .status(400)
+        .json({
+          error:
+            error.message
+        });
     }
 
-    res.status(500).json({
-      error:
-        err.message ||
-        "Internal server error"
-    });
+    res
+      .status(500)
+      .json({
+        error:
+          error.message ||
+          "Internal server error"
+      });
   }
 );
 
-/* =========================================================
-   CLEAN OLD JOBS
-========================================================= */
-
-setInterval(
-  () => {
-
-    const now =
-      Date.now();
-
-    for (
-      const [id, job]
-      of jobs.entries()
-    ) {
-
-      if (
-        now - job.updatedAt >
-        60 * 60 * 1000
-      ) {
-
-        jobs.delete(id);
-
-        console.log(
-          `[CLEANUP] Removed job ${id}`
-        );
-      }
-    }
-
-  },
-  10 * 60 * 1000
-);
-
-/* =========================================================
-   START
-========================================================= */
+/*
+=========================================================
+ START
+=========================================================
+*/
 
 app.listen(
   PORT,
   "0.0.0.0",
   () => {
-
     console.log(
       "======================================"
     );
 
     console.log(
-      "      RECAP ONE CLIP V3"
+      "      RECAP ONE CLIP V3.1"
     );
 
     console.log(
@@ -1953,28 +2363,95 @@ app.listen(
     );
 
     console.log(
-      `Fallback Models: ${FALLBACK_MODELS.join(", ")}`
+      `Fallback Models: ${FALLBACK_MODELS.join(
+        ", "
+      )}`
     );
 
     console.log(
       `FFmpeg: ${
         ffmpegPath
           ? "READY"
-          : "MISSING"
+          : "NOT FOUND"
       }`
     );
 
     console.log(
       `FFprobe: ${
-        ffprobePath
+        ffprobeStatic?.path
           ? "READY"
-          : "MISSING"
+          : "NOT FOUND"
       }`
-
     );
 
     console.log(
       "======================================"
     );
   }
+);
+
+/*
+=========================================================
+ CLEAN OLD TEMP FILES
+=========================================================
+*/
+
+setInterval(
+  () => {
+    try {
+      const now =
+        Date.now();
+
+      const maxAge =
+        6 * 60 * 60 * 1000;
+
+      for (const dir of [
+        UPLOAD_DIR,
+        TEMP_DIR
+      ]) {
+        if (
+          !fs.existsSync(
+            dir
+          )
+        ) {
+          continue;
+        }
+
+        for (
+          const name of fs.readdirSync(
+            dir
+          )
+        ) {
+          const full =
+            path.join(
+              dir,
+              name
+            );
+
+          try {
+            const stat =
+              fs.statSync(
+                full
+              );
+
+            if (
+              now -
+                stat.mtimeMs >
+              maxAge
+            ) {
+              safeUnlink(
+                full
+              );
+            }
+          } catch (e) {}
+        }
+      }
+    } catch (e) {
+      console.log(
+        "[CLEANUP] Error",
+        e.message
+      );
+    }
+  },
+  60 * 60 * 1000
 );
