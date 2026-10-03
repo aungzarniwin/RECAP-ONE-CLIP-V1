@@ -1,1105 +1,1844 @@
 <!DOCTYPE html>
 <html lang="my">
 <head>
-
-<meta charset="UTF-8">
-
-<meta
+  <meta charset="UTF-8">
+  <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
-/>
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  >
 
-<title>RECAP ONE CLIP</title>
+  <title>RECAP ONE CLIP</title>
 
-<style>
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
 
-* {
-    box-sizing: border-box;
-}
+    :root {
+      --bg: #080b12;
+      --card: #111722;
+      --card2: #161d2a;
+      --border: rgba(255,255,255,.08);
+      --text: #f5f7fb;
+      --muted: #8e98a9;
+      --accent: #ffb800;
+      --accent2: #ff7a00;
+      --green: #35d07f;
+      --red: #ff5d6c;
+      --blue: #4da3ff;
+    }
 
-body {
-    margin: 0;
-    background:
-        radial-gradient(
-            circle at top,
-            #172033 0%,
-            #080b12 45%,
-            #05070b 100%
-        );
-    color: #fff;
-    font-family:
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top right, rgba(255,184,0,.09), transparent 30%),
+        radial-gradient(circle at bottom left, rgba(77,163,255,.06), transparent 30%),
+        var(--bg);
+      color: var(--text);
+      font-family:
+        Inter,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
         Arial,
-        "Noto Sans Myanmar",
         sans-serif;
-    min-height: 100vh;
-}
+      min-height: 100vh;
+    }
 
-.container {
-    width: min(900px, 100%);
-    margin: auto;
-    padding: 20px 16px 60px;
-}
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
 
-.header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-}
+    .app {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 18px 14px 50px;
+    }
 
-.logo {
-    font-size: 20px;
-    font-weight: 900;
-    letter-spacing: 1px;
-}
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 22px;
+    }
 
-.version {
-    font-size: 11px;
-    padding: 7px 10px;
-    border-radius: 999px;
-    background: rgba(255,255,255,.08);
-    color: #9fb5ff;
-}
+    .brand {
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: .8px;
+    }
 
-.hero {
-    text-align: center;
-    margin: 25px 0 28px;
-}
+    .version {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 3px;
+    }
 
-.hero h1 {
-    margin: 0;
-    font-size: clamp(30px, 8vw, 52px);
-    line-height: 1.05;
-}
+    .status-dot {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 12px;
+      color: var(--muted);
+    }
 
-.hero p {
-    color: #9da5b4;
-    margin-top: 12px;
-    line-height: 1.7;
-}
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 12px rgba(53,208,127,.7);
+    }
 
-.card {
-    background:
-        rgba(17, 23, 35, .88);
-    border:
-        1px solid rgba(255,255,255,.08);
-    border-radius: 24px;
-    padding: 18px;
-    box-shadow:
-        0 20px 60px rgba(0,0,0,.35);
-    margin-bottom: 16px;
-}
+    .hero {
+      margin-bottom: 20px;
+    }
 
-.upload {
-    min-height: 230px;
-    border:
-        2px dashed #34415b;
-    border-radius: 20px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-    padding: 25px;
-    cursor: pointer;
-    transition: .2s;
-}
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(30px, 8vw, 52px);
+      line-height: 1.05;
+      letter-spacing: -1.8px;
+    }
 
-.upload:hover,
-.upload.drag {
-    border-color: #6c8cff;
-    background: rgba(108,140,255,.06);
-}
+    .hero h1 span {
+      color: var(--accent);
+    }
 
-.upload-icon {
-    font-size: 46px;
-    margin-bottom: 12px;
-}
-
-.upload strong {
-    display: block;
-    font-size: 18px;
-}
-
-.upload small {
-    display: block;
-    color: #8993a6;
-    margin-top: 8px;
-}
-
-input[type="file"] {
-    display: none;
-}
-
-video {
-    width: 100%;
-    max-height: 420px;
-    border-radius: 18px;
-    margin-top: 15px;
-    background: #000;
-}
-
-.file-name {
-    color: #9da5b4;
-    font-size: 13px;
-    margin-top: 10px;
-    word-break: break-word;
-}
-
-label {
-    display: block;
-    margin-bottom: 8px;
-    font-size: 13px;
-    color: #aeb7c7;
-}
-
-select,
-textarea {
-    width: 100%;
-    border: 1px solid #30394b;
-    background: #0c111b;
-    color: #fff;
-    border-radius: 14px;
-    padding: 13px;
-    outline: none;
-}
-
-textarea {
-    min-height: 110px;
-    resize: vertical;
-}
-
-.field {
-    margin-top: 16px;
-}
-
-.button {
-    width: 100%;
-    border: 0;
-    border-radius: 16px;
-    padding: 16px;
-    margin-top: 18px;
-    background:
-        linear-gradient(
-            135deg,
-            #6c8cff,
-            #8b5cf6
-        );
-    color: #fff;
-    font-size: 16px;
-    font-weight: 800;
-    cursor: pointer;
-}
-
-.button:disabled {
-    opacity: .45;
-    cursor: not-allowed;
-}
-
-.status {
-    display: none;
-}
-
-.status.active {
-    display: block;
-}
-
-.status-head {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 12px;
-}
-
-.progress {
-    height: 10px;
-    background: #202838;
-    border-radius: 99px;
-    overflow: hidden;
-}
-
-.progress-bar {
-    height: 100%;
-    width: 0%;
-    background:
-        linear-gradient(
-            90deg,
-            #6c8cff,
-            #a78bfa
-        );
-    transition: width .3s;
-}
-
-.steps {
-    display: grid;
-    grid-template-columns:
-        repeat(5, 1fr);
-    gap: 7px;
-    margin-top: 18px;
-}
-
-.step {
-    background: #101622;
-    border-radius: 10px;
-    padding: 9px 4px;
-    text-align: center;
-    font-size: 10px;
-    color: #697386;
-}
-
-.step.active {
-    color: #fff;
-    background: #202b42;
-}
-
-.step.done {
-    color: #9effc7;
-}
-
-.message {
-    margin-top: 13px;
-    color: #9da5b4;
-    font-size: 13px;
-    line-height: 1.6;
-}
-
-.result {
-    display: none;
-}
-
-.result.show {
-    display: block;
-}
-
-.success {
-    color: #9effc7;
-    font-weight: 800;
-    margin-bottom: 12px;
-}
-
-.script {
-    background: #080c13;
-    border: 1px solid #202938;
-    border-radius: 14px;
-    padding: 15px;
-    max-height: 300px;
-    overflow: auto;
-    white-space: pre-wrap;
-    line-height: 1.8;
-    color: #d7dce6;
-    font-size: 14px;
-}
-
-.downloads {
-    display: grid;
-    grid-template-columns:
-        repeat(2, 1fr);
-    gap: 10px;
-    margin-top: 15px;
-}
-
-.download {
-    text-decoration: none;
-    text-align: center;
-    padding: 13px;
-    border-radius: 13px;
-    background: #171e2d;
-    color: #fff;
-    font-size: 13px;
-}
-
-.download.primary {
-    background: #6c8cff;
-}
-
-.error {
-    color: #ff8f8f;
-}
-
-@media(max-width:600px) {
-
-    .container {
-        padding:
-            15px
-            12px
-            45px;
+    .hero p {
+      color: var(--muted);
+      line-height: 1.7;
+      margin: 12px 0 0;
+      font-size: 14px;
     }
 
     .card {
-        padding: 14px;
-        border-radius: 19px;
+      background: linear-gradient(
+        145deg,
+        rgba(255,255,255,.045),
+        rgba(255,255,255,.018)
+      );
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.18);
+      backdrop-filter: blur(15px);
     }
 
-    .upload {
-        min-height: 200px;
+    .card-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #dfe5ef;
+      margin-bottom: 12px;
     }
 
-    .steps {
-        grid-template-columns:
-            repeat(5, 1fr);
+    .upload-zone {
+      border: 1.5px dashed rgba(255,184,0,.35);
+      border-radius: 18px;
+      min-height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      cursor: pointer;
+      transition: .2s ease;
+      background: rgba(255,184,0,.025);
+      padding: 20px;
     }
 
-    .downloads {
-        grid-template-columns: 1fr;
+    .upload-zone:hover {
+      border-color: var(--accent);
+      background: rgba(255,184,0,.055);
     }
 
-}
+    .upload-zone.active {
+      border-color: var(--green);
+      background: rgba(53,208,127,.04);
+    }
 
-</style>
+    .upload-icon {
+      font-size: 38px;
+      margin-bottom: 10px;
+    }
 
+    .upload-main {
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .upload-sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 7px;
+      line-height: 1.6;
+    }
+
+    input[type=file] {
+      display: none;
+    }
+
+    .file-info {
+      display: none;
+      margin-top: 12px;
+      padding: 12px;
+      background: rgba(255,255,255,.035);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    .file-info.show {
+      display: block;
+    }
+
+    .file-name {
+      font-size: 13px;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .file-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .preview-wrap {
+      display: none;
+      margin-top: 12px;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .preview-wrap.show {
+      display: block;
+    }
+
+    video {
+      display: block;
+      width: 100%;
+      max-height: 420px;
+      background: #000;
+    }
+
+    .field {
+      margin-top: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 800;
+      margin-bottom: 7px;
+      color: #dfe5ef;
+    }
+
+    select,
+    textarea {
+      width: 100%;
+      color: var(--text);
+      background: #0c111a;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      outline: none;
+    }
+
+    select {
+      height: 48px;
+      padding: 0 13px;
+    }
+
+    textarea {
+      min-height: 105px;
+      resize: vertical;
+      padding: 13px;
+      line-height: 1.65;
+    }
+
+    select:focus,
+    textarea:focus {
+      border-color: rgba(255,184,0,.6);
+    }
+
+    .primary-btn {
+      width: 100%;
+      min-height: 54px;
+      margin-top: 15px;
+      border: 0;
+      border-radius: 16px;
+      cursor: pointer;
+      color: #101010;
+      font-weight: 950;
+      font-size: 15px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      box-shadow: 0 10px 30px rgba(255,145,0,.2);
+      transition: transform .15s ease, opacity .15s ease;
+    }
+
+    .primary-btn:active {
+      transform: scale(.985);
+    }
+
+    .primary-btn:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .progress-card {
+      display: none;
+    }
+
+    .progress-card.show {
+      display: block;
+    }
+
+    .progress-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .progress-title {
+      font-weight: 900;
+      font-size: 14px;
+    }
+
+    .progress-percent {
+      font-size: 20px;
+      font-weight: 950;
+      color: var(--accent);
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 9px;
+      border-radius: 20px;
+      background: #090d14;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 20px;
+      background: linear-gradient(90deg, var(--accent2), var(--accent));
+      transition: width .4s ease;
+    }
+
+    .stage-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+      margin-top: 16px;
+    }
+
+    .stage {
+      min-height: 60px;
+      padding: 8px 3px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.025);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 4px;
+      color: #697487;
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .stage-icon {
+      font-size: 17px;
+      filter: grayscale(1);
+      opacity: .5;
+    }
+
+    .stage.active {
+      color: var(--accent);
+      border-color: rgba(255,184,0,.35);
+      background: rgba(255,184,0,.05);
+    }
+
+    .stage.active .stage-icon {
+      filter: none;
+      opacity: 1;
+    }
+
+    .stage.done {
+      color: var(--green);
+      border-color: rgba(53,208,127,.3);
+      background: rgba(53,208,127,.04);
+    }
+
+    .stage.done .stage-icon {
+      filter: none;
+      opacity: 1;
+    }
+
+    .status-message {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+      text-align: center;
+    }
+
+    .result-card {
+      display: none;
+    }
+
+    .result-card.show {
+      display: block;
+    }
+
+    .ready {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--green);
+      font-weight: 900;
+      font-size: 15px;
+      margin-bottom: 13px;
+    }
+
+    .result-video {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+
+    .result-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 9px;
+      margin-top: 12px;
+    }
+
+    .action-btn {
+      min-height: 48px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--card2);
+      color: var(--text);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .action-btn.primary {
+      background: rgba(255,184,0,.1);
+      border-color: rgba(255,184,0,.25);
+      color: var(--accent);
+    }
+
+    .error-box {
+      display: none;
+      margin-top: 12px;
+      border: 1px solid rgba(255,93,108,.3);
+      background: rgba(255,93,108,.06);
+      color: #ff9ba5;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .error-box.show {
+      display: block;
+    }
+
+    .footer {
+      text-align: center;
+      color: #5d6777;
+      font-size: 10px;
+      line-height: 1.7;
+      margin-top: 25px;
+    }
+
+    .server-test {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 5px;
+    }
+
+    @media (min-width: 700px) {
+      .app {
+        padding-top: 30px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+
+      .stage-grid {
+        gap: 10px;
+      }
+
+      .stage {
+        font-size: 10px;
+      }
+    }
+  </style>
 </head>
 
 <body>
 
-<div class="container">
+<div class="app">
 
-    <div class="header">
-
-        <div class="logo">
-            RECAP ONE CLIP
-        </div>
-
-        <div class="version">
-            V1 · MOBILE
-        </div>
-
+  <div class="topbar">
+    <div>
+      <div class="brand">RECAP ONE CLIP</div>
+      <div class="version">V1 · MOBILE</div>
     </div>
 
-    <section class="hero">
+    <div class="status-dot">
+      <span class="dot"></span>
+      <span id="serverStatus">Checking</span>
+    </div>
+  </div>
 
-        <h1>
-            One Clip → Myanmar Recap
-        </h1>
+  <section class="hero">
+    <h1>One Clip → <span>Myanmar Recap</span></h1>
+    <p>
+      Video တစ်ခုထည့်ပြီး Myanmar recap workflow ကို
+      upload → script → voice → subtitle → final MP4 အထိ တစ်နေရာတည်းမှာလုပ်ပါ
+    </p>
+  </section>
 
-        <p>
-            Video တစ်ခုထည့်ပါ<br>
-            Recap script, Myanmar narration နဲ့ subtitle
-            workflow ကို တစ်နေရာတည်းမှာလုပ်ပါ
-        </p>
+  <!-- UPLOAD -->
+  <div class="card">
 
-    </section>
+    <div class="card-title">VIDEO INPUT</div>
 
-    <div class="card">
+    <label
+      class="upload-zone"
+      id="uploadZone"
+      for="videoInput"
+    >
+      <div>
+        <div class="upload-icon">🎬</div>
 
-        <label
-            class="upload"
-            id="uploadBox"
-            for="videoInput"
-        >
+        <div class="upload-main">
+          Video ရွေးရန်
+        </div>
 
-            <div>
+        <div class="upload-sub">
+          MP4 · MOV · WEBM · MKV<br>
+          Maximum 5 minutes
+        </div>
+      </div>
+    </label>
 
-                <div class="upload-icon">
-                    🎬
-                </div>
+    <input
+      id="videoInput"
+      type="file"
+      accept="video/mp4,video/webm,video/quicktime,video/x-matroska,.mp4,.mov,.webm,.mkv"
+    >
 
-                <strong>
-                    Video ရွေးရန်
-                </strong>
-
-                <small>
-                    MP4 · MOV · WEBM · MKV
-                </small>
-
-                <small>
-                    Maximum 5 minutes
-                </small>
-
-            </div>
-
-        </label>
-
-        <input
-            id="videoInput"
-            type="file"
-            accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-        >
-
-        <div
-            id="fileName"
-            class="file-name"
-        ></div>
-
-        <video
-            id="preview"
-            controls
-            playsinline
-            style="display:none"
-        ></video>
-
+    <div class="file-info" id="fileInfo">
+      <div class="file-name" id="fileName"></div>
+      <div class="file-meta" id="fileMeta"></div>
     </div>
 
-    <div class="card">
+    <div class="preview-wrap" id="previewWrap">
+      <video
+        id="videoPreview"
+        controls
+        playsinline
+      ></video>
+    </div>
 
-        <div class="field">
+  </div>
 
-            <label>
-                Myanmar Voice Style
-            </label>
+  <!-- SETTINGS -->
+  <div class="card">
 
-            <select id="voiceStyle">
+    <div class="card-title">RECAP SETTINGS</div>
 
-                <option>
-                    Cinematic Story
-                </option>
+    <div class="field">
+      <label for="voiceStyle">
+        Myanmar Voice Style
+      </label>
 
-                <option>
-                    Natural Storytelling
-                </option>
+      <select id="voiceStyle">
+        <option value="natural">
+          Natural Myanmar
+        </option>
 
-                <option>
-                    Serious
-                </option>
+        <option value="story">
+          Storytelling
+        </option>
 
-                <option>
-                    Suspense
-                </option>
+        <option value="calm">
+          Calm
+        </option>
 
-                <option>
-                    Emotional
-                </option>
+        <option value="dramatic">
+          Dramatic
+        </option>
+      </select>
+    </div>
 
-            </select>
+    <div class="field">
+      <label for="storyNotes">
+        Story Notes
+      </label>
 
-        </div>
+      <textarea
+        id="storyNotes"
+        placeholder="ဥပမာ - ဇာတ်လမ်းကို မြန်မြန်ဆန်ဆန် recap လုပ်ပါ၊ အရေးကြီးတဲ့ plot point တွေကို အဓိကထားပါ"
+      ></textarea>
+    </div>
 
-        <div class="field">
+    <button
+      class="primary-btn"
+      id="createBtn"
+      disabled
+    >
+      CREATE MYANMAR RECAP
+    </button>
 
-            <label>
-                Story Notes
-            </label>
+    <div
+      class="error-box"
+      id="errorBox"
+    ></div>
 
-            <textarea
-                id="notes"
-                placeholder="ဥပမာ - ဇာတ်လမ်းကို ရှင်းလင်းပြီး စိတ်ဝင်စားဖွယ် မြန်မာလို ပြောပြပါ"
-            ></textarea>
+  </div>
 
-        </div>
+  <!-- PROGRESS -->
+  <div
+    class="card progress-card"
+    id="progressCard"
+  >
 
-        <button
-            id="generateBtn"
-            class="button"
-            disabled
-        >
-            CREATE MYANMAR RECAP
-        </button>
+    <div class="progress-head">
+      <div class="progress-title">
+        PROCESSING
+      </div>
+
+      <div
+        class="progress-percent"
+        id="progressPercent"
+      >
+        0%
+      </div>
+    </div>
+
+    <div class="progress-track">
+      <div
+        class="progress-fill"
+        id="progressFill"
+      ></div>
+    </div>
+
+    <div class="stage-grid">
+
+      <div
+        class="stage"
+        id="stageAnalyze"
+        data-stage="analyze"
+      >
+        <div class="stage-icon">🔍</div>
+        <div>ANALYZE</div>
+      </div>
+
+      <div
+        class="stage"
+        id="stageScript"
+        data-stage="script"
+      >
+        <div class="stage-icon">📝</div>
+        <div>SCRIPT</div>
+      </div>
+
+      <div
+        class="stage"
+        id="stageVoice"
+        data-stage="voice"
+      >
+        <div class="stage-icon">🎙️</div>
+        <div>VOICE</div>
+      </div>
+
+      <div
+        class="stage"
+        id="stageSubtitle"
+        data-stage="subtitle"
+      >
+        <div class="stage-icon">💬</div>
+        <div>SUBTITLE</div>
+      </div>
+
+      <div
+        class="stage"
+        id="stageRender"
+        data-stage="render"
+      >
+        <div class="stage-icon">🎞️</div>
+        <div>RENDER</div>
+      </div>
 
     </div>
 
     <div
-        id="statusCard"
-        class="card status"
+      class="status-message"
+      id="statusMessage"
     >
+      Ready
+    </div>
 
-        <div class="status-head">
+  </div>
 
-            <strong>
-                PROCESSING
-            </strong>
+  <!-- RESULT -->
+  <div
+    class="card result-card"
+    id="resultCard"
+  >
 
-            <strong id="percent">
-                0%
-            </strong>
+    <div class="ready">
+      <span>✓</span>
+      <span>RECAP VIDEO READY</span>
+    </div>
 
-        </div>
+    <div class="result-video">
+      <video
+        id="resultVideo"
+        controls
+        playsinline
+      ></video>
+    </div>
 
-        <div class="progress">
+    <div class="result-actions">
 
-            <div
-                id="progressBar"
-                class="progress-bar"
-            ></div>
+      <a
+        class="action-btn primary"
+        id="downloadVideo"
+        href="#"
+        download
+      >
+        🎬 EXPORT MP4
+      </a>
 
-        </div>
-
-        <div class="steps">
-
-            <div
-                class="step"
-                data-step="analyzing"
-            >
-                ANALYZE
-            </div>
-
-            <div
-                class="step"
-                data-step="writing"
-            >
-                SCRIPT
-            </div>
-
-            <div
-                class="step"
-                data-step="voice"
-            >
-                VOICE
-            </div>
-
-            <div
-                class="step"
-                data-step="subtitle"
-            >
-                SUBTITLE
-            </div>
-
-            <div
-                class="step"
-                data-step="rendering"
-            >
-                RENDER
-            </div>
-
-        </div>
-
-        <div
-            id="message"
-            class="message"
-        >
-            Ready
-        </div>
+      <a
+        class="action-btn"
+        id="downloadSrt"
+        href="#"
+        download
+      >
+        📝 SUBTITLE SRT
+      </a>
 
     </div>
 
-    <div
-        id="resultCard"
-        class="card result"
-    >
+  </div>
 
-        <div class="success">
-            ✓ RECAP VIDEO READY
-        </div>
+  <div class="footer">
+    RECAP ONE CLIP V1<br>
+    Transformative recap workflow · User responsible for rights and platform compliance
 
-        <div
-            id="scriptPreview"
-            class="script"
-        ></div>
-
-        <div class="downloads">
-
-            <a
-                id="videoDownload"
-                class="download primary"
-                target="_blank"
-            >
-                🎬 EXPORT MP4
-            </a>
-
-            <a
-                id="subtitleDownload"
-                class="download"
-                target="_blank"
-            >
-                📝 SUBTITLE SRT
-            </a>
-
-        </div>
-
+    <div class="server-test">
+      <span>●</span>
+      <span id="apiText">API: checking...</span>
     </div>
+  </div>
 
 </div>
 
 <script>
 
-const videoInput =
-    document.getElementById(
-        "videoInput"
+  /* =========================================================
+     CONFIG
+  ========================================================= */
+
+  const API_BASE =
+    "https://recap-one-clip-v1.onrender.com";
+
+
+  /* =========================================================
+     ELEMENTS
+  ========================================================= */
+
+  const videoInput =
+    document.getElementById("videoInput");
+
+  const uploadZone =
+    document.getElementById("uploadZone");
+
+  const fileInfo =
+    document.getElementById("fileInfo");
+
+  const fileName =
+    document.getElementById("fileName");
+
+  const fileMeta =
+    document.getElementById("fileMeta");
+
+  const previewWrap =
+    document.getElementById("previewWrap");
+
+  const videoPreview =
+    document.getElementById("videoPreview");
+
+  const voiceStyle =
+    document.getElementById("voiceStyle");
+
+  const storyNotes =
+    document.getElementById("storyNotes");
+
+  const createBtn =
+    document.getElementById("createBtn");
+
+  const errorBox =
+    document.getElementById("errorBox");
+
+  const progressCard =
+    document.getElementById("progressCard");
+
+  const progressFill =
+    document.getElementById("progressFill");
+
+  const progressPercent =
+    document.getElementById("progressPercent");
+
+  const statusMessage =
+    document.getElementById("statusMessage");
+
+  const resultCard =
+    document.getElementById("resultCard");
+
+  const resultVideo =
+    document.getElementById("resultVideo");
+
+  const downloadVideo =
+    document.getElementById("downloadVideo");
+
+  const downloadSrt =
+    document.getElementById("downloadSrt");
+
+  const serverStatus =
+    document.getElementById("serverStatus");
+
+  const apiText =
+    document.getElementById("apiText");
+
+
+  /* =========================================================
+     STATE
+  ========================================================= */
+
+  let selectedFile = null;
+  let currentJobId = null;
+  let pollingTimer = null;
+
+
+  /* =========================================================
+     HELPERS
+  ========================================================= */
+
+  function showError(message) {
+
+    errorBox.textContent = message;
+    errorBox.classList.add("show");
+
+  }
+
+
+  function clearError() {
+
+    errorBox.textContent = "";
+    errorBox.classList.remove("show");
+
+  }
+
+
+  function formatBytes(bytes) {
+
+    if (!bytes) {
+      return "0 B";
+    }
+
+    const units = [
+      "B",
+      "KB",
+      "MB",
+      "GB"
+    ];
+
+    let i = 0;
+    let value = bytes;
+
+    while (
+      value >= 1024 &&
+      i < units.length - 1
+    ) {
+      value /= 1024;
+      i++;
+    }
+
+    return (
+      value.toFixed(i === 0 ? 0 : 1) +
+      " " +
+      units[i]
     );
 
-const uploadBox =
-    document.getElementById(
-        "uploadBox"
+  }
+
+
+  function formatDuration(seconds) {
+
+    if (!Number.isFinite(seconds)) {
+      return "";
+    }
+
+    const mins =
+      Math.floor(seconds / 60);
+
+    const secs =
+      Math.floor(seconds % 60);
+
+    return (
+      String(mins).padStart(2, "0") +
+      ":" +
+      String(secs).padStart(2, "0")
     );
 
-const preview =
-    document.getElementById(
-        "preview"
-    );
+  }
 
-const fileName =
-    document.getElementById(
-        "fileName"
-    );
 
-const generateBtn =
-    document.getElementById(
-        "generateBtn"
-    );
+  function setProgress(percent, message) {
 
-const statusCard =
-    document.getElementById(
-        "statusCard"
-    );
+    const safe =
+      Math.max(
+        0,
+        Math.min(
+          100,
+          Number(percent) || 0
+        )
+      );
 
-const resultCard =
-    document.getElementById(
-        "resultCard"
-    );
+    progressFill.style.width =
+      safe + "%";
 
-const progressBar =
-    document.getElementById(
-        "progressBar"
-    );
+    progressPercent.textContent =
+      Math.round(safe) + "%";
 
-const percent =
-    document.getElementById(
-        "percent"
-    );
+    if (message) {
+      statusMessage.textContent =
+        message;
+    }
 
-const message =
-    document.getElementById(
-        "message"
-    );
+  }
 
-const scriptPreview =
-    document.getElementById(
-        "scriptPreview"
-    );
 
-const videoDownload =
-    document.getElementById(
-        "videoDownload"
-    );
+  function resetStages() {
 
-const subtitleDownload =
-    document.getElementById(
-        "subtitleDownload"
-    );
+    document
+      .querySelectorAll(".stage")
+      .forEach(stage => {
 
-let selectedFile = null;
-let currentJobId = null;
-let pollTimer = null;
+        stage.classList.remove("active");
+        stage.classList.remove("done");
 
-videoInput.addEventListener(
+      });
+
+  }
+
+
+  function setStage(stageName) {
+
+    const stages = [
+      "analyze",
+      "script",
+      "voice",
+      "subtitle",
+      "render"
+    ];
+
+    const index =
+      stages.indexOf(stageName);
+
+    if (index < 0) {
+      return;
+    }
+
+    stages.forEach((name, i) => {
+
+      const element =
+        document.getElementById(
+          "stage" +
+          name.charAt(0).toUpperCase() +
+          name.slice(1)
+        );
+
+      if (!element) {
+        return;
+      }
+
+      element.classList.remove("active");
+      element.classList.remove("done");
+
+      if (i < index) {
+        element.classList.add("done");
+      }
+
+      if (i === index) {
+        element.classList.add("active");
+      }
+
+    });
+
+  }
+
+
+  function allStagesDone() {
+
+    document
+      .querySelectorAll(".stage")
+      .forEach(stage => {
+
+        stage.classList.remove("active");
+        stage.classList.add("done");
+
+      });
+
+  }
+
+
+  function showProgress() {
+
+    progressCard.classList.add("show");
+
+    resultCard.classList.remove("show");
+
+    window.scrollTo({
+      top: progressCard.offsetTop - 15,
+      behavior: "smooth"
+    });
+
+  }
+
+
+  /* =========================================================
+     SERVER HEALTH
+  ========================================================= */
+
+  async function checkServer() {
+
+    try {
+
+      const response =
+        await fetch(
+          API_BASE + "/api/health",
+          {
+            method: "GET",
+            cache: "no-store"
+          }
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          "Server returned " +
+          response.status
+        );
+      }
+
+      const data =
+        await response.json();
+
+      if (data.ok) {
+
+        serverStatus.textContent =
+          "Online";
+
+        apiText.textContent =
+          "API: Online";
+
+        return true;
+
+      }
+
+      throw new Error(
+        "API is not ready"
+      );
+
+    } catch (error) {
+
+      serverStatus.textContent =
+        "Offline";
+
+      apiText.textContent =
+        "API: unavailable";
+
+      return false;
+
+    }
+
+  }
+
+
+  /* =========================================================
+     VIDEO SELECT
+  ========================================================= */
+
+  videoInput.addEventListener(
     "change",
-    handleFile
-);
+    handleVideoSelect
+  );
 
-function handleFile() {
+
+  function handleVideoSelect(event) {
+
+    clearError();
 
     const file =
-        videoInput.files[0];
+      event.target.files &&
+      event.target.files[0];
 
     if (!file) {
-        return;
+      return;
     }
 
     selectedFile = file;
 
-    fileName.textContent =
-        `${file.name} · ${formatBytes(file.size)}`;
-
-    preview.src =
-        URL.createObjectURL(file);
-
-    preview.style.display =
-        "block";
-
-    generateBtn.disabled =
-        false;
-}
-
-function formatBytes(bytes) {
-
-    if (!bytes) {
-        return "0 B";
-    }
-
-    const units = [
-        "B",
-        "KB",
-        "MB",
-        "GB"
+    const allowed = [
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+      "video/x-matroska"
     ];
 
-    const index =
-        Math.floor(
-            Math.log(bytes) /
-            Math.log(1024)
-        );
+    const extension =
+      file.name
+        .split(".")
+        .pop()
+        .toLowerCase();
 
-    return (
-        bytes /
-        Math.pow(1024, index)
-    ).toFixed(1) +
-    " " +
-    units[index];
-}
+    const allowedExtensions = [
+      "mp4",
+      "mov",
+      "webm",
+      "mkv"
+    ];
 
-[
-    "dragenter",
-    "dragover"
-].forEach(eventName => {
+    if (
+      !allowed.includes(file.type) &&
+      !allowedExtensions.includes(extension)
+    ) {
 
-    uploadBox.addEventListener(
-        eventName,
-        e => {
+      selectedFile = null;
 
-            e.preventDefault();
+      showError(
+        "MP4, MOV, WEBM သို့မဟုတ် MKV video ပဲ ရွေးပါ"
+      );
 
-            uploadBox.classList.add(
-                "drag"
-            );
-        }
-    );
-});
+      return;
 
-[
-    "dragleave",
-    "drop"
-].forEach(eventName => {
-
-    uploadBox.addEventListener(
-        eventName,
-        e => {
-
-            e.preventDefault();
-
-            uploadBox.classList.remove(
-                "drag"
-            );
-        }
-    );
-});
-
-uploadBox.addEventListener(
-    "drop",
-    e => {
-
-        const file =
-            e.dataTransfer.files[0];
-
-        if (!file) return;
-
-        videoInput.files =
-            e.dataTransfer.files;
-
-        handleFile();
     }
-);
 
-generateBtn.addEventListener(
+    if (
+      file.size >
+      700 * 1024 * 1024
+    ) {
+
+      selectedFile = null;
+
+      showError(
+        "Video file size က 700MB ထက် မကျော်ရပါ"
+      );
+
+      return;
+
+    }
+
+    fileName.textContent =
+      file.name;
+
+    fileMeta.textContent =
+      formatBytes(file.size);
+
+    fileInfo.classList.add("show");
+
+    uploadZone.classList.add("active");
+
+    const objectUrl =
+      URL.createObjectURL(file);
+
+    videoPreview.src =
+      objectUrl;
+
+    previewWrap.classList.add("show");
+
+    createBtn.disabled =
+      false;
+
+    videoPreview.onloadedmetadata =
+      function () {
+
+        const duration =
+          videoPreview.duration;
+
+        if (
+          Number.isFinite(duration) &&
+          duration > 300
+        ) {
+
+          selectedFile = null;
+
+          createBtn.disabled =
+            true;
+
+          showError(
+            "Video duration က 5 minutes ထက် မကျော်ရပါ"
+          );
+
+          return;
+
+        }
+
+        fileMeta.textContent =
+          formatBytes(file.size) +
+          " · " +
+          formatDuration(duration);
+
+      };
+
+  }
+
+
+  /* =========================================================
+     CREATE
+  ========================================================= */
+
+  createBtn.addEventListener(
     "click",
-    startProcessing
-);
+    createRecap
+  );
 
-async function startProcessing() {
+
+  async function createRecap() {
+
+    clearError();
 
     if (!selectedFile) {
-        return;
+
+      showError(
+        "အရင်ဆုံး video ရွေးပါ"
+      );
+
+      return;
+
     }
 
-    generateBtn.disabled =
-        true;
+    createBtn.disabled =
+      true;
 
-    resultCard.classList.remove(
-        "show"
-    );
+    showProgress();
 
-    statusCard.classList.add(
-        "active"
-    );
+    resetStages();
 
     setProgress(
-        5,
-        "Video upload လုပ်နေပါတယ်"
+      3,
+      "Video upload ပြင်ဆင်နေပါတယ်"
     );
 
     try {
 
-        const formData =
-            new FormData();
+      /* -----------------------------------------------------
+         STEP 1: UPLOAD
+      ----------------------------------------------------- */
 
-        formData.append(
-            "video",
-            selectedFile
+      const formData =
+        new FormData();
+
+      formData.append(
+        "video",
+        selectedFile
+      );
+
+      const uploadResponse =
+        await fetch(
+          API_BASE + "/api/upload",
+          {
+            method: "POST",
+            body: formData
+          }
         );
 
-        const uploadResponse =
-            await fetch(
-                "/api/upload",
-                {
-                    method: "POST",
-                    body: formData
-                }
-            );
+      const uploadText =
+        await uploadResponse.text();
 
-        const uploadData =
-            await uploadResponse.json();
+      let uploadData = null;
 
-        if (!uploadResponse.ok) {
-            throw new Error(
-                uploadData.error ||
-                "Upload failed"
-            );
-        }
+      try {
+        uploadData =
+          JSON.parse(uploadText);
+      } catch {
+        throw new Error(
+          "Server response ကို JSON အဖြစ် မဖတ်နိုင်ပါ: " +
+          uploadText.slice(0, 200)
+        );
+      }
 
-        currentJobId =
-            uploadData.id;
+      if (!uploadResponse.ok) {
 
-        setProgress(
-            8,
-            "Processing စတင်ပါပြီ"
+        throw new Error(
+          uploadData.error ||
+          uploadData.message ||
+          "Video upload မအောင်မြင်ပါ"
         );
 
-        const generateResponse =
-            await fetch(
-                `/api/generate/${currentJobId}`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type":
-                            "application/json"
-                    },
-                    body: JSON.stringify({
-                        voiceStyle:
-                            document.getElementById(
-                                "voiceStyle"
-                            ).value,
+      }
 
-                        notes:
-                            document.getElementById(
-                                "notes"
-                            ).value
-                    })
-                }
-            );
+      currentJobId =
+        uploadData.jobId ||
+        uploadData.id;
 
-        const generateData =
-            await generateResponse.json();
+      if (!currentJobId) {
 
-        if (!generateResponse.ok) {
-            throw new Error(
-                generateData.error ||
-                "Generation failed"
-            );
-        }
+        throw new Error(
+          "Server က Job ID မပေးပါ"
+        );
 
-        pollStatus();
+      }
+
+      setProgress(
+        10,
+        "Video upload ပြီးပါပြီ"
+      );
+
+
+      /* -----------------------------------------------------
+         STEP 2: GENERATE
+      ----------------------------------------------------- */
+
+      setStage("analyze");
+
+      setProgress(
+        15,
+        "Video ကို analyze လုပ်နေပါတယ်"
+      );
+
+      const generateResponse =
+        await fetch(
+          API_BASE +
+          "/api/generate/" +
+          encodeURIComponent(
+            currentJobId
+          ),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+            body: JSON.stringify({
+
+              notes:
+                storyNotes.value.trim(),
+
+              voiceStyle:
+                voiceStyle.value
+
+            })
+          }
+        );
+
+      const generateText =
+        await generateResponse.text();
+
+      let generateData = null;
+
+      try {
+        generateData =
+          JSON.parse(generateText);
+      } catch {
+        throw new Error(
+          "Generate response မမှန်ပါ: " +
+          generateText.slice(0, 200)
+        );
+      }
+
+      if (!generateResponse.ok) {
+
+        throw new Error(
+          generateData.error ||
+          generateData.message ||
+          "Recap generate မအောင်မြင်ပါ"
+        );
+
+      }
+
+
+      /* -----------------------------------------------------
+         STEP 3: POLL STATUS
+      ----------------------------------------------------- */
+
+      await pollJob();
 
     } catch (error) {
 
-        showError(
-            error.message
+      console.error(error);
+
+      stopPolling();
+
+      showError(
+        error.message ||
+        "မအောင်မြင်ပါ"
+      );
+
+      createBtn.disabled =
+        false;
+
+      statusMessage.textContent =
+        "Failed";
+
+    }
+
+  }
+
+
+  /* =========================================================
+     STATUS POLLING
+  ========================================================= */
+
+  function stopPolling() {
+
+    if (pollingTimer) {
+
+      clearTimeout(
+        pollingTimer
+      );
+
+      pollingTimer = null;
+
+    }
+
+  }
+
+
+  async function pollJob() {
+
+    stopPolling();
+
+    if (!currentJobId) {
+      throw new Error(
+        "Job ID မရှိပါ"
+      );
+    }
+
+    try {
+
+      const response =
+        await fetch(
+          API_BASE +
+          "/api/status/" +
+          encodeURIComponent(
+            currentJobId
+          ),
+          {
+            method: "GET",
+            cache: "no-store"
+          }
         );
 
-        generateBtn.disabled =
-            false;
+      const text =
+        await response.text();
+
+      let data = null;
+
+      try {
+        data =
+          JSON.parse(text);
+      } catch {
+        throw new Error(
+          "Status response မမှန်ပါ"
+        );
+      }
+
+      if (!response.ok) {
+
+        throw new Error(
+          data.error ||
+          data.message ||
+          "Status မရပါ"
+        );
+
+      }
+
+      updateFromStatus(data);
+
+
+      /* -----------------------------------------------------
+         SUCCESS
+      ----------------------------------------------------- */
+
+      const status =
+        String(
+          data.status ||
+          data.state ||
+          ""
+        ).toLowerCase();
+
+      if (
+        status === "completed" ||
+        status === "complete" ||
+        status === "done" ||
+        data.outputUrl
+      ) {
+
+        handleComplete(data);
+
+        return;
+
+      }
+
+
+      /* -----------------------------------------------------
+         FAILED
+      ----------------------------------------------------- */
+
+      if (
+        status === "failed" ||
+        status === "error"
+      ) {
+
+        throw new Error(
+          data.error ||
+          data.message ||
+          "Render failed"
+        );
+
+      }
+
+
+      /* -----------------------------------------------------
+         CONTINUE
+      ----------------------------------------------------- */
+
+      pollingTimer =
+        setTimeout(
+          pollJob,
+          2500
+        );
+
+    } catch (error) {
+
+      stopPolling();
+
+      throw error;
+
     }
-}
 
-function pollStatus() {
+  }
 
-    clearInterval(
-        pollTimer
+
+  /* =========================================================
+     STATUS → UI
+  ========================================================= */
+
+  function updateFromStatus(data) {
+
+    let percent =
+      Number(
+        data.progress ??
+        data.percent ??
+        data.percentage ??
+        0
+      );
+
+    let stage =
+      String(
+        data.stage ||
+        data.step ||
+        ""
+      ).toLowerCase();
+
+    let message =
+      data.message ||
+      data.statusMessage ||
+      data.status ||
+      "Processing...";
+
+
+    /* -------------------------------------------------------
+       Infer stage from progress
+    ------------------------------------------------------- */
+
+    if (!stage) {
+
+      if (percent < 25) {
+        stage = "analyze";
+      } else if (percent < 45) {
+        stage = "script";
+      } else if (percent < 65) {
+        stage = "voice";
+      } else if (percent < 80) {
+        stage = "subtitle";
+      } else {
+        stage = "render";
+      }
+
+    }
+
+
+    /* -------------------------------------------------------
+       Normalize stage names
+    ------------------------------------------------------- */
+
+    if (
+      stage.includes("analysis") ||
+      stage.includes("analy")
+    ) {
+      stage = "analyze";
+    }
+
+    if (
+      stage.includes("script")
+    ) {
+      stage = "script";
+    }
+
+    if (
+      stage.includes("voice") ||
+      stage.includes("tts") ||
+      stage.includes("audio")
+    ) {
+      stage = "voice";
+    }
+
+    if (
+      stage.includes("subtitle") ||
+      stage.includes("srt")
+    ) {
+      stage = "subtitle";
+    }
+
+    if (
+      stage.includes("render") ||
+      stage.includes("export")
+    ) {
+      stage = "render";
+    }
+
+
+    setStage(stage);
+
+    setProgress(
+      percent,
+      message
     );
 
-    pollTimer =
-        setInterval(
-            async () => {
+  }
 
-                try {
 
-                    const response =
-                        await fetch(
-                            `/api/status/${currentJobId}`
-                        );
+  /* =========================================================
+     COMPLETE
+  ========================================================= */
 
-                    const data =
-                        await response.json();
+  function handleComplete(data) {
 
-                    if (!response.ok) {
-                        throw new Error(
-                            data.error
-                        );
-                    }
+    stopPolling();
 
-                    setProgress(
-                        data.progress || 0,
-                        data.message || ""
-                    );
+    allStagesDone();
 
-                    updateSteps(
-                        data.status
-                    );
+    setProgress(
+      100,
+      "Recap video အဆင်သင့်ဖြစ်ပါပြီ"
+    );
 
-                    if (
-                        data.status ===
-                        "complete"
-                    ) {
+    createBtn.disabled =
+      false;
 
-                        clearInterval(
-                            pollTimer
-                        );
 
-                        showResult(
-                            data
-                        );
+    let outputUrl =
+      data.outputUrl ||
+      data.videoUrl ||
+      data.resultUrl ||
+      data.url;
 
-                        generateBtn.disabled =
-                            false;
-                    }
+    if (!outputUrl) {
 
-                    if (
-                        data.status ===
-                        "error"
-                    ) {
+      throw new Error(
+        "Final MP4 URL မရပါ"
+      );
 
-                        clearInterval(
-                            pollTimer
-                        );
+    }
 
-                        showError(
-                            data.message
-                        );
+    outputUrl =
+      makeAbsoluteUrl(
+        outputUrl
+      );
 
-                        generateBtn.disabled =
-                            false;
-                    }
 
-                } catch (error) {
+    /* -------------------------------------------------------
+       SRT
+    ------------------------------------------------------- */
 
-                    clearInterval(
-                        pollTimer
-                    );
+    let subtitleUrl =
+      data.subtitleUrl ||
+      data.srtUrl;
 
-                    showError(
-                        error.message
-                    );
+    if (!subtitleUrl) {
 
-                    generateBtn.disabled =
-                        false;
-                }
+      subtitleUrl =
+        API_BASE +
+        "/outputs/" +
+        encodeURIComponent(
+          currentJobId
+        ) +
+        ".srt";
 
-            },
-            900
+    } else {
+
+      subtitleUrl =
+        makeAbsoluteUrl(
+          subtitleUrl
         );
-}
 
-function setProgress(
-    value,
-    text
-) {
+    }
 
-    progressBar.style.width =
-        `${value}%`;
 
-    percent.textContent =
-        `${value}%`;
+    /* -------------------------------------------------------
+       Result video
+    ------------------------------------------------------- */
 
-    message.textContent =
-        text;
-}
+    resultVideo.src =
+      outputUrl;
 
-function updateSteps(status) {
+    downloadVideo.href =
+      outputUrl;
 
-    const order = [
-        "analyzing",
-        "writing",
-        "voice",
-        "subtitle",
-        "rendering"
-    ];
+    downloadSrt.href =
+      subtitleUrl;
 
-    const current =
-        order.indexOf(status);
+    downloadVideo.setAttribute(
+      "download",
+      "recap-one-clip-" +
+      currentJobId +
+      ".mp4"
+    );
 
-    document
-        .querySelectorAll(".step")
-        .forEach(step => {
-
-            const stepName =
-                step.dataset.step;
-
-            const index =
-                order.indexOf(
-                    stepName
-                );
-
-            step.classList.remove(
-                "active",
-                "done"
-            );
-
-            if (
-                current >= 0 &&
-                index < current
-            ) {
-                step.classList.add(
-                    "done"
-                );
-            }
-
-            if (
-                stepName === status
-            ) {
-                step.classList.add(
-                    "active"
-                );
-            }
-        });
-}
-
-function showResult(data) {
-
-    statusCard.classList.add(
-        "active"
+    downloadSrt.setAttribute(
+      "download",
+      "recap-one-clip-" +
+      currentJobId +
+      ".srt"
     );
 
     resultCard.classList.add(
-        "show"
+      "show"
     );
 
-    scriptPreview.textContent =
-        data.script || "";
+    setTimeout(() => {
 
-    videoDownload.href =
-        data.outputUrl;
+      resultCard.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
 
-    subtitleDownload.href =
-        data.subtitleUrl;
+    }, 150);
 
-    setProgress(
-        100,
-        "Final Recap Video အဆင်သင့်ဖြစ်ပါပြီ"
-    );
+  }
 
-    resultCard.scrollIntoView({
-        behavior: "smooth"
-    });
-}
 
-function showError(text) {
+  function makeAbsoluteUrl(url) {
 
-    statusCard.classList.add(
-        "active"
-    );
+    if (!url) {
+      return "";
+    }
 
-    message.innerHTML =
-        `<span class="error">Error: ${escapeHtml(text)}</span>`;
-}
+    if (
+      /^https?:\/\//i.test(url)
+    ) {
+      return url;
+    }
 
-function escapeHtml(text) {
+    if (
+      url.startsWith("/")
+    ) {
+      return API_BASE + url;
+    }
 
-    return String(text)
-        .replace(
-            /&/g,
-            "&amp;"
-        )
-        .replace(
-            /</g,
-            "&lt;"
-        )
-        .replace(
-            />/g,
-            "&gt;"
-        )
-        .replace(
-            /"/g,
-            "&quot;"
-        )
-        .replace(
-            /'/g,
-            "&#039;"
+    return API_BASE + "/" + url;
+
+  }
+
+
+  /* =========================================================
+     DOWNLOAD FALLBACK
+  ========================================================= */
+
+  downloadVideo.addEventListener(
+    "click",
+    async function(event) {
+
+      const href =
+        downloadVideo.href;
+
+      if (
+        !href ||
+        href === "#" ||
+        !href.startsWith("http")
+      ) {
+        event.preventDefault();
+
+        showError(
+          "Download URL မရသေးပါ"
         );
-}
+      }
+
+    }
+  );
+
+
+  downloadSrt.addEventListener(
+    "click",
+    function(event) {
+
+      const href =
+        downloadSrt.href;
+
+      if (
+        !href ||
+        href === "#"
+      ) {
+
+        event.preventDefault();
+
+        showError(
+          "SRT URL မရသေးပါ"
+        );
+
+      }
+
+    }
+  );
+
+
+  /* =========================================================
+     INIT
+  ========================================================= */
+
+  checkServer();
 
 </script>
 
