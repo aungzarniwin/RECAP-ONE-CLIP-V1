@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="my">
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0"
+/>
+
+<title>RECAP ONE CLIP</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background:
+        radial-gradient(
+            circle at top,
+            #172033 0%,
+            #080b12 45%,
+            #05070b 100%
+        );
+    color: #fff;
+    font-family:
+        Arial,
+        "Noto Sans Myanmar",
+        sans-serif;
+    min-height: 100vh;
+}
+
+.container {
+    width: min(900px, 100%);
+    margin: auto;
+    padding: 20px 16px 60px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.logo {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: 1px;
+}
+
+.version {
+    font-size: 11px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.08);
+    color: #9fb5ff;
+}
+
+.hero {
+    text-align: center;
+    margin: 25px 0 28px;
+}
+
+.hero h1 {
+    margin: 0;
+    font-size: clamp(30px, 8vw, 52px);
+    line-height: 1.05;
+}
+
+.hero p {
+    color: #9da5b4;
+    margin-top: 12px;
+    line-height: 1.7;
+}
+
+.card {
+    background:
+        rgba(17, 23, 35, .88);
+    border:
+        1px solid rgba(255,255,255,.08);
+    border-radius: 24px;
+    padding: 18px;
+    box-shadow:
+        0 20px 60px rgba(0,0,0,.35);
+    margin-bottom: 16px;
+}
+
+.upload {
+    min-height: 230px;
+    border:
+        2px dashed #34415b;
+    border-radius: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 25px;
+    cursor: pointer;
+    transition: .2s;
+}
+
+.upload:hover,
+.upload.drag {
+    border-color: #6c8cff;
+    background: rgba(108,140,255,.06);
+}
+
+.upload-icon {
+    font-size: 46px;
+    margin-bottom: 12px;
+}
+
+.upload strong {
+    display: block;
+    font-size: 18px;
+}
+
+.upload small {
+    display: block;
+    color: #8993a6;
+    margin-top: 8px;
+}
+
+input[type="file"] {
+    display: none;
+}
+
+video {
+    width: 100%;
+    max-height: 420px;
+    border-radius: 18px;
+    margin-top: 15px;
+    background: #000;
+}
+
+.file-name {
+    color: #9da5b4;
+    font-size: 13px;
+    margin-top: 10px;
+    word-break: break-word;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #aeb7c7;
+}
+
+select,
+textarea {
+    width: 100%;
+    border: 1px solid #30394b;
+    background: #0c111b;
+    color: #fff;
+    border-radius: 14px;
+    padding: 13px;
+    outline: none;
+}
+
+textarea {
+    min-height: 110px;
+    resize: vertical;
+}
+
+.field {
+    margin-top: 16px;
+}
+
+.button {
+    width: 100%;
+    border: 0;
+    border-radius: 16px;
+    padding: 16px;
+    margin-top: 18px;
+    background:
+        linear-gradient(
+            135deg,
+            #6c8cff,
+            #8b5cf6
+        );
+    color: #fff;
+    font-size: 16px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+.status {
+    display: none;
+}
+
+.status.active {
+    display: block;
+}
+
+.status-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.progress {
+    height: 10px;
+    background: #202838;
+    border-radius: 99px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 0%;
+    background:
+        linear-gradient(
+            90deg,
+            #6c8cff,
+            #a78bfa
+        );
+    transition: width .3s;
+}
+
+.steps {
+    display: grid;
+    grid-template-columns:
+        repeat(5, 1fr);
+    gap: 7px;
+    margin-top: 18px;
+}
+
+.step {
+    background: #101622;
+    border-radius: 10px;
+    padding: 9px 4px;
+    text-align: center;
+    font-size: 10px;
+    color: #697386;
+}
+
+.step.active {
+    color: #fff;
+    background: #202b42;
+}
+
+.step.done {
+    color: #9effc7;
+}
+
+.message {
+    margin-top: 13px;
+    color: #9da5b4;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.result {
+    display: none;
+}
+
+.result.show {
+    display: block;
+}
+
+.success {
+    color: #9effc7;
+    font-weight: 800;
+    margin-bottom: 12px;
+}
+
+.script {
+    background: #080c13;
+    border: 1px solid #202938;
+    border-radius: 14px;
+    padding: 15px;
+    max-height: 300px;
+    overflow: auto;
+    white-space: pre-wrap;
+    line-height: 1.8;
+    color: #d7dce6;
+    font-size: 14px;
+}
+
+.downloads {
+    display: grid;
+    grid-template-columns:
+        repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.download {
+    text-decoration: none;
+    text-align: center;
+    padding: 13px;
+    border-radius: 13px;
+    background: #171e2d;
+    color: #fff;
+    font-size: 13px;
+}
+
+.download.primary {
+    background: #6c8cff;
+}
+
+.error {
+    color: #ff8f8f;
+}
+
+@media(max-width:600px) {
+
+    .container {
+        padding:
+            15px
+            12px
+            45px;
+    }
+
+    .card {
+        padding: 14px;
+        border-radius: 19px;
+    }
+
+    .upload {
+        min-height: 200px;
+    }
+
+    .steps {
+        grid-template-columns:
+            repeat(5, 1fr);
+    }
+
+    .downloads {
+        grid-template-columns: 1fr;
+    }
+
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="header">
+
+        <div class="logo">
+            RECAP ONE CLIP
+        </div>
+
+        <div class="version">
+            V1 · MOBILE
+        </div>
+
+    </div>
+
+    <section class="hero">
+
+        <h1>
+            One Clip → Myanmar Recap
+        </h1>
+
+        <p>
+            Video တစ်ခုထည့်ပါ<br>
+            Recap script, Myanmar narration နဲ့ subtitle
+            workflow ကို တစ်နေရာတည်းမှာလုပ်ပါ
+        </p>
+
+    </section>
+
+    <div class="card">
+
+        <label
+            class="upload"
+            id="uploadBox"
+            for="videoInput"
+        >
+
+            <div>
+
+                <div class="upload-icon">
+                    🎬
+                </div>
+
+                <strong>
+                    Video ရွေးရန်
+                </strong>
+
+                <small>
+                    MP4 · MOV · WEBM · MKV
+                </small>
+
+                <small>
+                    Maximum 5 minutes
+                </small>
+
+            </div>
+
+        </label>
+
+        <input
+            id="videoInput"
+            type="file"
+            accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
+        >
+
+        <div
+            id="fileName"
+            class="file-name"
+        ></div>
+
+        <video
+            id="preview"
+            controls
+            playsinline
+            style="display:none"
+        ></video>
+
+    </div>
+
+    <div class="card">
+
+        <div class="field">
+
+            <label>
+                Myanmar Voice Style
+            </label>
+
+            <select id="voiceStyle">
+
+                <option>
+                    Cinematic Story
+                </option>
+
+                <option>
+                    Natural Storytelling
+                </option>
+
+                <option>
+                    Serious
+                </option>
+
+                <option>
+                    Suspense
+                </option>
+
+                <option>
+                    Emotional
+                </option>
+
+            </select>
+
+        </div>
+
+        <div class="field">
+
+            <label>
+                Story Notes
+            </label>
+
+            <textarea
+                id="notes"
+                placeholder="ဥပမာ - ဇာတ်လမ်းကို ရှင်းလင်းပြီး စိတ်ဝင်စားဖွယ် မြန်မာလို ပြောပြပါ"
+            ></textarea>
+
+        </div>
+
+        <button
+            id="generateBtn"
+            class="button"
+            disabled
+        >
+            CREATE MYANMAR RECAP
+        </button>
+
+    </div>
+
+    <div
+        id="statusCard"
+        class="card status"
+    >
+
+        <div class="status-head">
+
+            <strong>
+                PROCESSING
+            </strong>
+
+            <strong id="percent">
+                0%
+            </strong>
+
+        </div>
+
+        <div class="progress">
+
+            <div
+                id="progressBar"
+                class="progress-bar"
+            ></div>
+
+        </div>
+
+        <div class="steps">
+
+            <div
+                class="step"
+                data-step="analyzing"
+            >
+                ANALYZE
+            </div>
+
+            <div
+                class="step"
+                data-step="writing"
+            >
+                SCRIPT
+            </div>
+
+            <div
+                class="step"
+                data-step="voice"
+            >
+                VOICE
+            </div>
+
+            <div
+                class="step"
+                data-step="subtitle"
+            >
+                SUBTITLE
+            </div>
+
+            <div
+                class="step"
+                data-step="rendering"
+            >
+                RENDER
+            </div>
+
+        </div>
+
+        <div
+            id="message"
+            class="message"
+        >
+            Ready
+        </div>
+
+    </div>
+
+    <div
+        id="resultCard"
+        class="card result"
+    >
+
+        <div class="success">
+            ✓ RECAP VIDEO READY
+        </div>
+
+        <div
+            id="scriptPreview"
+            class="script"
+        ></div>
+
+        <div class="downloads">
+
+            <a
+                id="videoDownload"
+                class="download primary"
+                target="_blank"
+            >
+                🎬 EXPORT MP4
+            </a>
+
+            <a
+                id="subtitleDownload"
+                class="download"
+                target="_blank"
+            >
+                📝 SUBTITLE SRT
+            </a>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+const videoInput =
+    document.getElementById(
+        "videoInput"
+    );
+
+const uploadBox =
+    document.getElementById(
+        "uploadBox"
+    );
+
+const preview =
+    document.getElementById(
+        "preview"
+    );
+
+const fileName =
+    document.getElementById(
+        "fileName"
+    );
+
+const generateBtn =
+    document.getElementById(
+        "generateBtn"
+    );
+
+const statusCard =
+    document.getElementById(
+        "statusCard"
+    );
+
+const resultCard =
+    document.getElementById(
+        "resultCard"
+    );
+
+const progressBar =
+    document.getElementById(
+        "progressBar"
+    );
+
+const percent =
+    document.getElementById(
+        "percent"
+    );
+
+const message =
+    document.getElementById(
+        "message"
+    );
+
+const scriptPreview =
+    document.getElementById(
+        "scriptPreview"
+    );
+
+const videoDownload =
+    document.getElementById(
+        "videoDownload"
+    );
+
+const subtitleDownload =
+    document.getElementById(
+        "subtitleDownload"
+    );
+
+let selectedFile = null;
+let currentJobId = null;
+let pollTimer = null;
+
+videoInput.addEventListener(
+    "change",
+    handleFile
+);
+
+function handleFile() {
+
+    const file =
+        videoInput.files[0];
+
+    if (!file) {
+        return;
+    }
+
+    selectedFile = file;
+
+    fileName.textContent =
+        `${file.name} · ${formatBytes(file.size)}`;
+
+    preview.src =
+        URL.createObjectURL(file);
+
+    preview.style.display =
+        "block";
+
+    generateBtn.disabled =
+        false;
+}
+
+function formatBytes(bytes) {
+
+    if (!bytes) {
+        return "0 B";
+    }
+
+    const units = [
+        "B",
+        "KB",
+        "MB",
+        "GB"
+    ];
+
+    const index =
+        Math.floor(
+            Math.log(bytes) /
+            Math.log(1024)
+        );
+
+    return (
+        bytes /
+        Math.pow(1024, index)
+    ).toFixed(1) +
+    " " +
+    units[index];
+}
+
+[
+    "dragenter",
+    "dragover"
+].forEach(eventName => {
+
+    uploadBox.addEventListener(
+        eventName,
+        e => {
+
+            e.preventDefault();
+
+            uploadBox.classList.add(
+                "drag"
+            );
+        }
+    );
+});
+
+[
+    "dragleave",
+    "drop"
+].forEach(eventName => {
+
+    uploadBox.addEventListener(
+        eventName,
+        e => {
+
+            e.preventDefault();
+
+            uploadBox.classList.remove(
+                "drag"
+            );
+        }
+    );
+});
+
+uploadBox.addEventListener(
+    "drop",
+    e => {
+
+        const file =
+            e.dataTransfer.files[0];
+
+        if (!file) return;
+
+        videoInput.files =
+            e.dataTransfer.files;
+
+        handleFile();
+    }
+);
+
+generateBtn.addEventListener(
+    "click",
+    startProcessing
+);
+
+async function startProcessing() {
+
+    if (!selectedFile) {
+        return;
+    }
+
+    generateBtn.disabled =
+        true;
+
+    resultCard.classList.remove(
+        "show"
+    );
+
+    statusCard.classList.add(
+        "active"
+    );
+
+    setProgress(
+        5,
+        "Video upload လုပ်နေပါတယ်"
+    );
+
+    try {
+
+        const formData =
+            new FormData();
+
+        formData.append(
+            "video",
+            selectedFile
+        );
+
+        const uploadResponse =
+            await fetch(
+                "/api/upload",
+                {
+                    method: "POST",
+                    body: formData
+                }
+            );
+
+        const uploadData =
+            await uploadResponse.json();
+
+        if (!uploadResponse.ok) {
+            throw new Error(
+                uploadData.error ||
+                "Upload failed"
+            );
+        }
+
+        currentJobId =
+            uploadData.id;
+
+        setProgress(
+            8,
+            "Processing စတင်ပါပြီ"
+        );
+
+        const generateResponse =
+            await fetch(
+                `/api/generate/${currentJobId}`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+                    body: JSON.stringify({
+                        voiceStyle:
+                            document.getElementById(
+                                "voiceStyle"
+                            ).value,
+
+                        notes:
+                            document.getElementById(
+                                "notes"
+                            ).value
+                    })
+                }
+            );
+
+        const generateData =
+            await generateResponse.json();
+
+        if (!generateResponse.ok) {
+            throw new Error(
+                generateData.error ||
+                "Generation failed"
+            );
+        }
+
+        pollStatus();
+
+    } catch (error) {
+
+        showError(
+            error.message
+        );
+
+        generateBtn.disabled =
+            false;
+    }
+}
+
+function pollStatus() {
+
+    clearInterval(
+        pollTimer
+    );
+
+    pollTimer =
+        setInterval(
+            async () => {
+
+                try {
+
+                    const response =
+                        await fetch(
+                            `/api/status/${currentJobId}`
+                        );
+
+                    const data =
+                        await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(
+                            data.error
+                        );
+                    }
+
+                    setProgress(
+                        data.progress || 0,
+                        data.message || ""
+                    );
+
+                    updateSteps(
+                        data.status
+                    );
+
+                    if (
+                        data.status ===
+                        "complete"
+                    ) {
+
+                        clearInterval(
+                            pollTimer
+                        );
+
+                        showResult(
+                            data
+                        );
+
+                        generateBtn.disabled =
+                            false;
+                    }
+
+                    if (
+                        data.status ===
+                        "error"
+                    ) {
+
+                        clearInterval(
+                            pollTimer
+                        );
+
+                        showError(
+                            data.message
+                        );
+
+                        generateBtn.disabled =
+                            false;
+                    }
+
+                } catch (error) {
+
+                    clearInterval(
+                        pollTimer
+                    );
+
+                    showError(
+                        error.message
+                    );
+
+                    generateBtn.disabled =
+                        false;
+                }
+
+            },
+            900
+        );
+}
+
+function setProgress(
+    value,
+    text
+) {
+
+    progressBar.style.width =
+        `${value}%`;
+
+    percent.textContent =
+        `${value}%`;
+
+    message.textContent =
+        text;
+}
+
+function updateSteps(status) {
+
+    const order = [
+        "analyzing",
+        "writing",
+        "voice",
+        "subtitle",
+        "rendering"
+    ];
+
+    const current =
+        order.indexOf(status);
+
+    document
+        .querySelectorAll(".step")
+        .forEach(step => {
+
+            const stepName =
+                step.dataset.step;
+
+            const index =
+                order.indexOf(
+                    stepName
+                );
+
+            step.classList.remove(
+                "active",
+                "done"
+            );
+
+            if (
+                current >= 0 &&
+                index < current
+            ) {
+                step.classList.add(
+                    "done"
+                );
+            }
+
+            if (
+                stepName === status
+            ) {
+                step.classList.add(
+                    "active"
+                );
+            }
+        });
+}
+
+function showResult(data) {
+
+    statusCard.classList.add(
+        "active"
+    );
+
+    resultCard.classList.add(
+        "show"
+    );
+
+    scriptPreview.textContent =
+        data.script || "";
+
+    videoDownload.href =
+        data.outputUrl;
+
+    subtitleDownload.href =
+        data.subtitleUrl;
+
+    setProgress(
+        100,
+        "Final Recap Video အဆင်သင့်ဖြစ်ပါပြီ"
+    );
+
+    resultCard.scrollIntoView({
+        behavior: "smooth"
+    });
+}
+
+function showError(text) {
+
+    statusCard.classList.add(
+        "active"
+    );
+
+    message.innerHTML =
+        `<span class="error">Error: ${escapeHtml(text)}</span>`;
+}
+
+function escapeHtml(text) {
+
+    return String(text)
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+}
+
+</script>
+
+</body>
+</html>
