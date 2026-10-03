@@ -1,6 +1,6 @@
 {
   "name": "recap-one-clip",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "RECAP ONE CLIP - Myanmar AI Video Recap Studio",
   "main": "server.js",
   "scripts": {
