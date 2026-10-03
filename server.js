@@ -1,9 +1,3 @@
-// ============================================================
-// RECAP ONE CLIP V1
-// Myanmar AI Recap Studio
-// BACKEND SERVER
-// ============================================================
-
 require("dotenv").config();
 
 const express = require("express");
@@ -13,92 +7,72 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { execFile } = require("child_process");
+const util = require("util");
 
-const ffmpeg = require("ffmpeg-static");
-const ffprobe = require("ffprobe-static").path;
+const { GoogleGenAI } = require("@google/genai");
 const googleTTS = require("google-tts-api");
 
-// ============================================================
-// APP
-// ============================================================
+const execFileAsync = util.promisify(execFile);
 
 const app = express();
 
-const PORT = process.env.PORT || 3000;
-
-// ============================================================
-// DIRECTORIES
-// ============================================================
+const PORT = process.env.PORT || 10000;
 
 const ROOT_DIR = __dirname;
-
 const UPLOAD_DIR = path.join(ROOT_DIR, "uploads");
 const OUTPUT_DIR = path.join(ROOT_DIR, "outputs");
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, {
-    recursive: true
-  });
-}
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
-if (!fs.existsSync(OUTPUT_DIR)) {
-  fs.mkdirSync(OUTPUT_DIR, {
-    recursive: true
-  });
-}
+/* =========================================================
+   CONFIG
+========================================================= */
 
-// ============================================================
-// SETTINGS
-// ============================================================
-
-const MAX_FILE_SIZE = 700 * 1024 * 1024;
 const MAX_VIDEO_SECONDS = 5 * 60;
+const MAX_FILE_SIZE = 700 * 1024 * 1024;
 
-// ============================================================
-// CORS
-// ============================================================
+const GEMINI_MODEL =
+  process.env.GEMINI_MODEL || "gemini-3.8-flash";
+
+const GEMINI_API_KEY =
+  process.env.GEMINI_API_KEY || "";
+
+const ai = GEMINI_API_KEY
+  ? new GoogleGenAI({
+      apiKey: GEMINI_API_KEY
+    })
+  : null;
+
+
+/* =========================================================
+   MIDDLEWARE
+========================================================= */
 
 app.use(
   cors({
     origin: true,
-    methods: [
-      "GET",
-      "POST",
-      "OPTIONS"
-    ],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization"
-    ]
+    credentials: false
   })
 );
 
-// ============================================================
-// BODY
-// ============================================================
-
 app.use(
   express.json({
-    limit: "20mb"
+    limit: "2mb"
   })
 );
 
 app.use(
   express.urlencoded({
     extended: true,
-    limit: "20mb"
+    limit: "2mb"
   })
 );
 
-// ============================================================
-// JOB DATABASE
-// ============================================================
 
-const jobs = new Map();
-
-// ============================================================
-// MULTER
-// ============================================================
+/* =========================================================
+   MULTER
+========================================================= */
 
 const storage = multer.diskStorage({
 
@@ -108,20 +82,19 @@ const storage = multer.diskStorage({
 
   filename: function (req, file, cb) {
 
-    const extension =
-      path.extname(file.originalname)
-        .toLowerCase();
+    const ext =
+      path.extname(file.originalname || "")
+        .toLowerCase() || ".mp4";
 
-    const filename =
-      Date.now() +
-      "-" +
-      crypto
-        .randomBytes(8)
-        .toString("hex") +
-      extension;
+    const id =
+      crypto.randomUUID();
 
-    cb(null, filename);
+    cb(
+      null,
+      id + ext
+    );
   }
+
 });
 
 const upload = multer({
@@ -130,201 +103,641 @@ const upload = multer({
 
   limits: {
     fileSize: MAX_FILE_SIZE
-  },
-
-  fileFilter: function (req, file, cb) {
-
-    const allowedExtensions = [
-      ".mp4",
-      ".mov",
-      ".webm",
-      ".mkv"
-    ];
-
-    const extension =
-      path.extname(file.originalname)
-        .toLowerCase();
-
-    if (
-      !allowedExtensions.includes(
-        extension
-      )
-    ) {
-
-      return cb(
-        new Error(
-          "Only MP4, MOV, WEBM and MKV files are supported"
-        )
-      );
-    }
-
-    cb(null, true);
   }
+
 });
 
-// ============================================================
-// HELPERS
-// ============================================================
 
-function createJobId() {
+/* =========================================================
+   JOB STORE
+========================================================= */
 
-  return crypto.randomUUID();
+const jobs = new Map();
+
+
+function createJob(file) {
+
+  const id =
+    crypto.randomUUID();
+
+  const job = {
+
+    id,
+
+    originalName:
+      file.originalname,
+
+    filePath:
+      file.path,
+
+    mimeType:
+      file.mimetype ||
+      "video/mp4",
+
+    status:
+      "uploaded",
+
+    stage:
+      "analyze",
+
+    progress:
+      10,
+
+    message:
+      "Video uploaded",
+
+    duration:
+      0,
+
+    script:
+      "",
+
+    analysis:
+      "",
+
+    audioPath:
+      null,
+
+    subtitlePath:
+      null,
+
+    outputPath:
+      null,
+
+    outputUrl:
+      null,
+
+    subtitleUrl:
+      null,
+
+    error:
+      null,
+
+    createdAt:
+      Date.now(),
+
+    updatedAt:
+      Date.now()
+
+  };
+
+  jobs.set(id, job);
+
+  return job;
 }
 
-// ------------------------------------------------------------
 
-function deleteFile(filePath) {
+function updateJob(id, values) {
 
-  try {
+  const job =
+    jobs.get(id);
 
-    if (
-      filePath &&
-      fs.existsSync(filePath)
-    ) {
-      fs.unlinkSync(filePath);
-    }
-
-  } catch (error) {
-
-    console.log(
-      "File cleanup error:",
-      error.message
-    );
+  if (!job) {
+    return;
   }
+
+  Object.assign(
+    job,
+    values,
+    {
+      updatedAt:
+        Date.now()
+    }
+  );
+
 }
 
-// ------------------------------------------------------------
 
-function execute(command, args) {
+/* =========================================================
+   HELPERS
+========================================================= */
 
+function sleep(ms) {
   return new Promise(
-    (resolve, reject) => {
-
-      execFile(
-        command,
-        args,
-        {
-          maxBuffer:
-            50 * 1024 * 1024
-        },
-
-        (error, stdout, stderr) => {
-
-          if (error) {
-
-            error.stdout =
-              stdout;
-
-            error.stderr =
-              stderr;
-
-            reject(error);
-
-            return;
-          }
-
-          resolve({
-            stdout,
-            stderr
-          });
-        }
-      );
-    }
+    resolve => setTimeout(resolve, ms)
   );
 }
 
-// ============================================================
-// VIDEO INFORMATION
-// ============================================================
 
-async function getVideoDuration(
-  videoPath
-) {
+function escapeFilterPath(filePath) {
+
+  return filePath
+    .replace(/\\/g, "/")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "\\'")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]");
+
+}
+
+
+function cleanText(text) {
+
+  if (!text) {
+    return "";
+  }
+
+  return String(text)
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/\r/g, "")
+    .trim();
+
+}
+
+
+/* =========================================================
+   FFMPEG / FFPROBE
+========================================================= */
+
+function getFFmpegPath() {
+
+  try {
+    return require("ffmpeg-static");
+  } catch {
+    return "ffmpeg";
+  }
+
+}
+
+
+function getFFprobePath() {
+
+  try {
+    return require("ffprobe-static").path;
+  } catch {
+    return "ffprobe";
+  }
+
+}
+
+
+async function getVideoInfo(filePath) {
+
+  const ffprobe =
+    getFFprobePath();
 
   const result =
-    await execute(
+    await execFileAsync(
       ffprobe,
       [
         "-v",
         "error",
-
         "-show_entries",
         "format=duration",
-
         "-of",
-        "default=noprint_wrappers=1:nokey=1",
-
-        videoPath
-      ]
+        "json",
+        filePath
+      ],
+      {
+        maxBuffer:
+          1024 * 1024
+      }
     );
+
+  const data =
+    JSON.parse(result.stdout);
 
   const duration =
     Number(
-      result.stdout.trim()
+      data.format &&
+      data.format.duration
     );
 
   if (
-    !Number.isFinite(duration)
+    !Number.isFinite(duration) ||
+    duration <= 0
   ) {
 
     throw new Error(
-      "Unable to read video duration"
+      "Video duration ကို မဖတ်နိုင်ပါ"
     );
+
   }
 
-  return duration;
+  return {
+    duration
+  };
+
 }
 
-// ============================================================
-// RECAP SCRIPT
-// ============================================================
 
-function generateMyanmarRecap(
-  notes = ""
+/* =========================================================
+   GEMINI VIDEO ANALYSIS
+========================================================= */
+
+async function analyzeVideoWithGemini(job) {
+
+  if (!ai) {
+
+    throw new Error(
+      "GEMINI_API_KEY မထည့်ရသေးပါ"
+    );
+
+  }
+
+  updateJob(
+    job.id,
+    {
+      stage:
+        "analyze",
+
+      progress:
+        20,
+
+      message:
+        "Gemini က video ကို analyze လုပ်နေပါတယ်",
+
+      status:
+        "processing"
+    }
+  );
+
+
+  /* -------------------------------------------------------
+     Upload video to Gemini File API
+  ------------------------------------------------------- */
+
+  const uploadedFile =
+    await ai.files.upload({
+      file:
+        job.filePath,
+
+      config: {
+        mimeType:
+          job.mimeType
+      }
+    });
+
+
+  /* -------------------------------------------------------
+     Wait until Gemini processes video
+  ------------------------------------------------------- */
+
+  let videoFile =
+    uploadedFile;
+
+  let tries =
+    0;
+
+  while (
+    videoFile.state === "PROCESSING"
+  ) {
+
+    tries++;
+
+    if (tries > 120) {
+
+      throw new Error(
+        "Gemini video processing timeout"
+      );
+
+    }
+
+    updateJob(
+      job.id,
+      {
+        progress:
+          Math.min(
+            35,
+            20 + tries * 0.12
+          ),
+
+        message:
+          "Video analysis အတွက် ပြင်ဆင်နေပါတယ်"
+      }
+    );
+
+    await sleep(3000);
+
+    videoFile =
+      await ai.files.get({
+        name:
+          videoFile.name
+      });
+
+  }
+
+
+  if (
+    videoFile.state === "FAILED"
+  ) {
+
+    throw new Error(
+      "Gemini video processing failed"
+    );
+
+  }
+
+
+  if (
+    !videoFile.uri
+  ) {
+
+    throw new Error(
+      "Gemini video URI မရပါ"
+    );
+
+  }
+
+
+  /* -------------------------------------------------------
+     Analyze actual video
+  ------------------------------------------------------- */
+
+  updateJob(
+    job.id,
+    {
+      progress:
+        40,
+
+      message:
+        "Scene, audio နဲ့ key events တွေကို စစ်ဆေးနေပါတယ်"
+    }
+  );
+
+
+  const prompt = `
+You are a professional movie/video recap analyst.
+
+Analyze the uploaded video carefully.
+
+Your task is to understand:
+1. Main characters or people
+2. Important visual events
+3. Important dialogue or spoken information
+4. Major scene changes
+5. Cause and effect
+6. Beginning, middle and ending
+7. Important emotional moments
+8. Important objects, locations or actions
+9. Any important twist or reveal
+
+Create a detailed chronological analysis.
+
+IMPORTANT:
+- Do not invent events that are not present
+- Use timestamps whenever useful
+- Focus on what is actually visible or audible
+- Do not reproduce long copyrighted dialogue
+- Do not reproduce the original screenplay
+- Summarize and transform the content
+
+Return the analysis in English first so another model step can reliably convert it into a Myanmar recap.
+
+User notes:
+${job.notes || "No additional notes"}
+`;
+
+
+  const response =
+    await ai.models.generateContent({
+
+      model:
+        GEMINI_MODEL,
+
+      contents: [
+        {
+          role:
+            "user",
+
+          parts: [
+
+            {
+              fileData: {
+                fileUri:
+                  videoFile.uri,
+
+                mimeType:
+                  videoFile.mimeType ||
+                  job.mimeType
+              }
+            },
+
+            {
+              text:
+                prompt
+            }
+
+          ]
+        }
+      ]
+
+    });
+
+
+  const analysis =
+    cleanText(
+      response.text
+    );
+
+
+  if (!analysis) {
+
+    throw new Error(
+      "Gemini က video analysis မထုတ်ပေးနိုင်ပါ"
+    );
+
+  }
+
+
+  updateJob(
+    job.id,
+    {
+      analysis,
+
+      progress:
+        45,
+
+      message:
+        "Video analysis ပြီးပါပြီ"
+    }
+  );
+
+
+  /* -------------------------------------------------------
+     Delete Gemini uploaded file when possible
+  ------------------------------------------------------- */
+
+  try {
+
+    await ai.files.delete({
+      name:
+        videoFile.name
+    });
+
+  } catch (deleteError) {
+
+    console.log(
+      "Gemini file cleanup skipped:",
+      deleteError.message
+    );
+
+  }
+
+
+  return analysis;
+
+}
+
+
+/* =========================================================
+   MYANMAR RECAP SCRIPT
+========================================================= */
+
+async function generateMyanmarScript(
+  job,
+  analysis
 ) {
 
-  let script = `
-ဒီဗီဒီယိုရဲ့ ဇာတ်လမ်းကို အစပိုင်းမှာ အဓိကဇာတ်ကောင်တွေနဲ့ သူတို့ရဲ့အခြေအနေကို မိတ်ဆက်ပေးထားပါတယ်
+  if (!ai) {
 
-ဇာတ်လမ်းတဖြည်းဖြည်း တိုးတက်လာတဲ့အခါ မမျှော်လင့်ထားတဲ့ ပြဿနာတစ်ခု ပေါ်ပေါက်လာပြီး အဓိကဇာတ်ကောင်ဟာ အရေးကြီးတဲ့ ဆုံးဖြတ်ချက်တစ်ခု ချမှတ်ရပါတော့တယ်
+    throw new Error(
+      "GEMINI_API_KEY မထည့်ရသေးပါ"
+    );
 
-အဲဒီနောက်မှာ အဖြစ်အပျက်တွေ တစ်ဆင့်ပြီးတစ်ဆင့် ပိုမိုရှုပ်ထွေးလာပါတယ်
-
-ဇာတ်ကောင်တွေရဲ့ ဆက်ဆံရေးတွေ ပြောင်းလဲလာပြီး အမှန်တရားကို ရှာဖွေဖို့ ကြိုးစားလာကြပါတယ်
-
-ပြဿနာတွေ ပိုမိုကြီးမားလာတဲ့အချိန်မှာ အဓိကဇာတ်ကောင်ဟာ အခက်အခဲတွေကို ရင်ဆိုင်ပြီး ကိုယ့်ရဲ့ဆုံးဖြတ်ချက်တွေအတွက် တာဝန်ယူရပါတော့တယ်
-
-နောက်ဆုံးမှာ အရေးကြီးတဲ့ အဖြစ်အပျက်တစ်ခု ဖြစ်ပေါ်လာပြီး ဇာတ်လမ်းရဲ့ အဓိကပဋိပက္ခကို ဖြေရှင်းဖို့ အခြေအနေတွေ ပြောင်းလဲသွားပါတယ်
-
-ဒီဇာတ်လမ်းက အခက်အခဲတွေကြားမှာ ဆုံးဖြတ်ချက်တစ်ခုချင်းစီရဲ့ အကျိုးဆက်ကို ရင်ဆိုင်ရပုံကို အဓိကဖော်ပြထားတာ ဖြစ်ပါတယ်
-`.trim();
-
-  if (notes.trim()) {
-
-    script +=
-      "\n\n" +
-      "အထူးမှတ်ချက် — " +
-      notes.trim();
   }
+
+  updateJob(
+    job.id,
+    {
+      stage:
+        "script",
+
+      progress:
+        50,
+
+      message:
+        "Myanmar recap script ရေးနေပါတယ်"
+    }
+  );
+
+
+  const style =
+    job.voiceStyle ||
+    "natural";
+
+
+  const prompt = `
+You are an expert Myanmar movie recap narrator.
+
+Using the video analysis below, write a complete Myanmar-language
+recap narration.
+
+Requirements:
+
+- Natural spoken Myanmar
+- Easy for Myanmar viewers to understand
+- Storytelling style
+- Explain events in chronological order
+- Focus on important plot points
+- Explain character actions and consequences
+- Keep the narration engaging
+- Do not copy original movie dialogue
+- Do not reproduce screenplay lines
+- Do not invent scenes
+- Do not mention that you are AI
+- Do not use English unless a name or unavoidable technical term
+- Write narration only
+- Do not add headings
+- Do not add bullet points
+- Do not add timestamps
+- Do not add quotation marks around the narration
+- Do not end every sentence with formal Myanmar punctuation
+
+Voice style:
+${style}
+
+Target video duration:
+${Math.round(job.duration)} seconds
+
+User notes:
+${job.notes || "None"}
+
+VIDEO ANALYSIS:
+${analysis}
+`;
+
+
+  const response =
+    await ai.models.generateContent({
+
+      model:
+        GEMINI_MODEL,
+
+      contents:
+        prompt
+
+    });
+
+
+  const script =
+    cleanText(
+      response.text
+    );
+
+
+  if (!script) {
+
+    throw new Error(
+      "Myanmar recap script မရပါ"
+    );
+
+  }
+
+
+  updateJob(
+    job.id,
+    {
+      script,
+
+      progress:
+        60,
+
+      message:
+        "Myanmar recap script အဆင်သင့်ဖြစ်ပါပြီ"
+    }
+  );
+
 
   return script;
+
 }
 
-// ============================================================
-// TTS
-// ============================================================
 
-async function generateVoice(
-  text,
-  outputFile
+/* =========================================================
+   GOOGLE TTS
+========================================================= */
+
+async function createMyanmarVoice(
+  job,
+  script
 ) {
 
-  const chunks =
-    text
-      .replace(/\s+/g, " ")
-      .match(/.{1,180}/g) || [];
+  updateJob(
+    job.id,
+    {
+      stage:
+        "voice",
 
-  const audioFiles = [];
+      progress:
+        65,
+
+      message:
+        "Myanmar narration voice ဖန်တီးနေပါတယ်"
+    }
+  );
+
+
+  const chunks =
+    splitTextForTTS(
+      script,
+      180
+    );
+
+
+  const audioFiles =
+    [];
+
 
   for (
     let i = 0;
@@ -332,117 +745,108 @@ async function generateVoice(
     i++
   ) {
 
-    const chunk =
-      chunks[i].trim();
+    updateJob(
+      job.id,
+      {
+        progress:
+          65 +
+          Math.round(
+            (i / chunks.length) * 12
+          ),
 
-    if (!chunk) {
-      continue;
-    }
+        message:
+          `Myanmar voice ${i + 1}/${chunks.length}`
+      }
+    );
+
 
     const urls =
       googleTTS.getAllAudioUrls(
-        chunk,
+        chunks[i],
         {
-          lang: "my",
-          slow: false,
+          lang:
+            "my",
+
+          slow:
+            false,
+
           host:
             "https://translate.google.com"
         }
       );
 
+
     if (
       !urls ||
-      !urls.length ||
-      !urls[0].url
+      !urls.length
     ) {
 
       throw new Error(
-        "Myanmar voice URL could not be generated"
+        "Myanmar TTS audio URL မရပါ"
       );
+
     }
 
-    const audioURL =
+
+    const url =
       urls[0].url;
 
-    const audioFile =
+
+    const partPath =
       path.join(
         OUTPUT_DIR,
-        `voice-${Date.now()}-${i}.mp3`
+        `${job.id}-tts-${i}.mp3`
       );
 
-    const response =
-      await fetch(audioURL);
 
-    if (!response.ok) {
-
-      throw new Error(
-        "Myanmar voice download failed"
-      );
-    }
-
-    const buffer =
-      Buffer.from(
-        await response.arrayBuffer()
-      );
-
-    fs.writeFileSync(
-      audioFile,
-      buffer
+    await downloadFile(
+      url,
+      partPath
     );
+
 
     audioFiles.push(
-      audioFile
+      partPath
     );
+
   }
 
-  if (!audioFiles.length) {
 
-    throw new Error(
-      "No voice audio was generated"
-    );
-  }
-
-  // One audio file
-  if (
-    audioFiles.length === 1
-  ) {
-
-    fs.copyFileSync(
-      audioFiles[0],
-      outputFile
-    );
-
-    deleteFile(
-      audioFiles[0]
-    );
-
-    return outputFile;
-  }
-
-  // Multiple audio files
-  const listFile =
+  const listPath =
     path.join(
       OUTPUT_DIR,
-      `voice-list-${Date.now()}.txt`
+      `${job.id}-audio-list.txt`
     );
+
 
   const listContent =
     audioFiles
       .map(
         file =>
-          `file '${file.replace(
-            /'/g,
-            "'\\''"
-          )}'`
+          `file '${file.replace(/'/g, "'\\''")}'`
       )
       .join("\n");
 
+
   fs.writeFileSync(
-    listFile,
-    listContent
+    listPath,
+    listContent,
+    "utf8"
   );
 
-  await execute(
+
+  const audioPath =
+    path.join(
+      OUTPUT_DIR,
+      `${job.id}-voice.mp3`
+    );
+
+
+  const ffmpeg =
+    getFFmpegPath();
+
+
+  await execFileAsync(
     ffmpeg,
     [
       "-y",
@@ -454,185 +858,594 @@ async function generateVoice(
       "0",
 
       "-i",
-      listFile,
+      listPath,
 
-      "-c",
-      "copy",
+      "-c:a",
+      "libmp3lame",
 
-      outputFile
-    ]
-  );
+      "-b:a",
+      "128k",
 
-  deleteFile(listFile);
-
-  for (
-    const file of audioFiles
-  ) {
-    deleteFile(file);
-  }
-
-  return outputFile;
-}
-
-// ============================================================
-// SRT TIME
-// ============================================================
-
-function formatSRTTime(
-  seconds
-) {
-
-  const milliseconds =
-    Math.max(
-      0,
-      Math.floor(
-        seconds * 1000
-      )
-    );
-
-  const ms =
-    milliseconds % 1000;
-
-  const totalSeconds =
-    Math.floor(
-      milliseconds / 1000
-    );
-
-  const sec =
-    totalSeconds % 60;
-
-  const totalMinutes =
-    Math.floor(
-      totalSeconds / 60
-    );
-
-  const min =
-    totalMinutes % 60;
-
-  const hour =
-    Math.floor(
-      totalMinutes / 60
-    );
-
-  return (
-    String(hour).padStart(
-      2,
-      "0"
-    ) +
-    ":" +
-    String(min).padStart(
-      2,
-      "0"
-    ) +
-    ":" +
-    String(sec).padStart(
-      2,
-      "0"
-    ) +
-    "," +
-    String(ms).padStart(
-      3,
-      "0"
-    )
-  );
-}
-
-// ============================================================
-// CREATE SUBTITLE
-// ============================================================
-
-function generateSubtitle(
-  script,
-  duration,
-  outputFile
-) {
-
-  const sentences =
-    script
-      .split(/(?<=[။!?])/)
-      .map(
-        item => item.trim()
-      )
-      .filter(Boolean);
-
-  if (!sentences.length) {
-
-    sentences.push(script);
-  }
-
-  const timePerSentence =
-    duration /
-    sentences.length;
-
-  let srt = "";
-
-  sentences.forEach(
-    (sentence, index) => {
-
-      const start =
-        index *
-        timePerSentence;
-
-      const end =
-        index ===
-        sentences.length - 1
-          ? duration
-          : (index + 1) *
-            timePerSentence;
-
-      srt +=
-        `${index + 1}\n`;
-
-      srt +=
-        `${formatSRTTime(
-          start
-        )} --> ${formatSRTTime(
-          end
-        )}\n`;
-
-      srt +=
-        `${sentence}\n\n`;
+      audioPath
+    ],
+    {
+      maxBuffer:
+        10 * 1024 * 1024
     }
   );
 
+
+  updateJob(
+    job.id,
+    {
+      audioPath,
+
+      progress:
+        78,
+
+      message:
+        "Myanmar narration voice ပြီးပါပြီ"
+    }
+  );
+
+
+  return audioPath;
+
+}
+
+
+/* =========================================================
+   TTS CHUNKING
+========================================================= */
+
+function splitTextForTTS(
+  text,
+  maxLength
+) {
+
+  const normalized =
+    text
+      .replace(/\s+/g, " ")
+      .trim();
+
+
+  if (
+    normalized.length <=
+    maxLength
+  ) {
+
+    return [
+      normalized
+    ];
+
+  }
+
+
+  const sentences =
+    normalized.split(
+      /(?<=[။.!?၊])\s+/
+    );
+
+
+  const chunks =
+    [];
+
+  let current =
+    "";
+
+
+  for (
+    const sentence
+    of sentences
+  ) {
+
+    if (
+      (
+        current +
+        " " +
+        sentence
+      ).trim().length <=
+      maxLength
+    ) {
+
+      current =
+        (
+          current +
+          " " +
+          sentence
+        ).trim();
+
+    } else {
+
+      if (current) {
+        chunks.push(
+          current
+        );
+      }
+
+      current =
+        sentence.trim();
+
+    }
+
+  }
+
+
+  if (current) {
+    chunks.push(
+      current
+    );
+  }
+
+
+  return chunks;
+
+}
+
+
+/* =========================================================
+   DOWNLOAD FILE
+========================================================= */
+
+async function downloadFile(
+  url,
+  destination
+) {
+
+  const response =
+    await fetch(url);
+
+
+  if (!response.ok) {
+
+    throw new Error(
+      `TTS download failed: ${response.status}`
+    );
+
+  }
+
+
+  const buffer =
+    Buffer.from(
+      await response.arrayBuffer()
+    );
+
+
   fs.writeFileSync(
-    outputFile,
-    srt,
+    destination,
+    buffer
+  );
+
+}
+
+
+/* =========================================================
+   SUBTITLE
+========================================================= */
+
+async function createSubtitle(
+  job,
+  script
+) {
+
+  updateJob(
+    job.id,
+    {
+      stage:
+        "subtitle",
+
+      progress:
+        82,
+
+      message:
+        "Myanmar subtitle ဖန်တီးနေပါတယ်"
+    }
+  );
+
+
+  const sentences =
+    splitForSubtitle(
+      script
+    );
+
+
+  const totalChars =
+    sentences.reduce(
+      (
+        total,
+        sentence
+      ) =>
+        total +
+        sentence.length,
+      0
+    );
+
+
+  let cursor =
+    0;
+
+
+  const blocks =
+    [];
+
+
+  for (
+    let i = 0;
+    i < sentences.length;
+    i++
+  ) {
+
+    const sentence =
+      sentences[i];
+
+
+    const start =
+      job.duration *
+      (
+        cursor /
+        Math.max(
+          totalChars,
+          1
+        )
+      );
+
+
+    cursor +=
+      sentence.length;
+
+
+    const end =
+      job.duration *
+      (
+        cursor /
+        Math.max(
+          totalChars,
+          1
+        )
+      );
+
+
+    blocks.push(
+      [
+        String(i + 1),
+
+        `${toSrtTime(start)} --> ${toSrtTime(end)}`,
+
+        sentence,
+
+        ""
+      ].join("\n")
+    );
+
+  }
+
+
+  const subtitlePath =
+    path.join(
+      OUTPUT_DIR,
+      `${job.id}.srt`
+    );
+
+
+  fs.writeFileSync(
+    subtitlePath,
+    blocks.join("\n"),
     "utf8"
   );
 
-  return outputFile;
+
+  updateJob(
+    job.id,
+    {
+      subtitlePath,
+
+      subtitleUrl:
+        `/outputs/${job.id}.srt`,
+
+      progress:
+        87,
+
+      message:
+        "Myanmar subtitle အဆင်သင့်ဖြစ်ပါပြီ"
+    }
+  );
+
+
+  return subtitlePath;
+
 }
 
-// ============================================================
-// FINAL VIDEO
-// ============================================================
 
-async function renderVideo(
-  videoFile,
-  audioFile,
-  subtitleFile,
-  outputFile
+/* =========================================================
+   SUBTITLE TEXT SPLIT
+========================================================= */
+
+function splitForSubtitle(
+  text
 ) {
 
-  const subtitlePath =
-    subtitleFile
-      .replace(/\\/g, "/")
-      .replace(/:/g, "\\:");
+  const clean =
+    text
+      .replace(/\s+/g, " ")
+      .trim();
 
-  await execute(
-    ffmpeg,
-    [
+
+  const raw =
+    clean.split(
+      /(?<=[။.!?])\s+/
+    );
+
+
+  const output =
+    [];
+
+
+  for (
+    const item of raw
+  ) {
+
+    const sentence =
+      item.trim();
+
+
+    if (!sentence) {
+      continue;
+    }
+
+
+    if (
+      sentence.length <= 70
+    ) {
+
+      output.push(
+        sentence
+      );
+
+      continue;
+
+    }
+
+
+    let current =
+      "";
+
+
+    const words =
+      sentence.split(" ");
+
+
+    for (
+      const word of words
+    ) {
+
+      if (
+        (
+          current +
+          " " +
+          word
+        ).trim().length <= 70
+      ) {
+
+        current =
+          (
+            current +
+            " " +
+            word
+          ).trim();
+
+      } else {
+
+        if (current) {
+          output.push(
+            current
+          );
+        }
+
+        current =
+          word;
+
+      }
+
+    }
+
+
+    if (current) {
+      output.push(
+        current
+      );
+    }
+
+  }
+
+
+  return output;
+
+}
+
+
+/* =========================================================
+   SRT TIME
+========================================================= */
+
+function toSrtTime(
+  seconds
+) {
+
+  seconds =
+    Math.max(
+      0,
+      Number(seconds) || 0
+    );
+
+
+  const hours =
+    Math.floor(
+      seconds / 3600
+    );
+
+
+  const minutes =
+    Math.floor(
+      (seconds % 3600) / 60
+    );
+
+
+  const secs =
+    Math.floor(
+      seconds % 60
+    );
+
+
+  const ms =
+    Math.floor(
+      (
+        seconds -
+        Math.floor(seconds)
+      ) *
+      1000
+    );
+
+
+  return (
+    String(hours).padStart(2, "0") +
+    ":" +
+    String(minutes).padStart(2, "0") +
+    ":" +
+    String(secs).padStart(2, "0") +
+    "," +
+    String(ms).padStart(3, "0")
+  );
+
+}
+
+
+/* =========================================================
+   FINAL VIDEO RENDER
+========================================================= */
+
+async function renderFinalVideo(
+  job
+) {
+
+  updateJob(
+    job.id,
+    {
+      stage:
+        "render",
+
+      progress:
+        90,
+
+      message:
+        "Final MP4 render လုပ်နေပါတယ်"
+    }
+  );
+
+
+  const ffmpeg =
+    getFFmpegPath();
+
+
+  const outputPath =
+    path.join(
+      OUTPUT_DIR,
+      `${job.id}-recap.mp4`
+    );
+
+
+  /*
+    We burn the generated SRT onto the
+    original video.
+
+    Generated narration becomes the
+    final audio track.
+  */
+
+  const subtitleFilter =
+    escapeFilterPath(
+      job.subtitlePath
+    );
+
+
+  const args = [
+
+    "-y",
+
+    "-i",
+    job.filePath,
+
+    "-i",
+    job.audioPath,
+
+    "-vf",
+    `subtitles='${subtitleFilter}':force_style='FontName=Arial,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=35'`,
+
+    "-map",
+    "0:v:0",
+
+    "-map",
+    "1:a:0",
+
+    "-c:v",
+    "libx264",
+
+    "-preset",
+    "veryfast",
+
+    "-crf",
+    "23",
+
+    "-c:a",
+    "aac",
+
+    "-b:a",
+    "128k",
+
+    "-shortest",
+
+    "-movflags",
+    "+faststart",
+
+    outputPath
+
+  ];
+
+
+  try {
+
+    await execFileAsync(
+      ffmpeg,
+      args,
+      {
+        maxBuffer:
+          30 * 1024 * 1024
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "FFmpeg render error:",
+      error.stderr ||
+      error.message
+    );
+
+
+    /*
+      Fallback:
+      If subtitle filter is unavailable,
+      create video with narration audio.
+    */
+
+    const fallbackArgs = [
+
       "-y",
 
       "-i",
-      videoFile,
+      job.filePath,
 
       "-i",
-      audioFile,
-
-      "-vf",
-      `subtitles=${subtitlePath}`,
+      job.audioPath,
 
       "-map",
       "0:v:0",
@@ -653,233 +1466,247 @@ async function renderVideo(
       "aac",
 
       "-b:a",
-      "192k",
+      "128k",
+
+      "-shortest",
 
       "-movflags",
       "+faststart",
 
-      "-shortest",
+      outputPath
 
-      outputFile
-    ]
+    ];
+
+
+    await execFileAsync(
+      ffmpeg,
+      fallbackArgs,
+      {
+        maxBuffer:
+          30 * 1024 * 1024
+      }
+    );
+
+  }
+
+
+  updateJob(
+    job.id,
+    {
+      outputPath,
+
+      outputUrl:
+        `/outputs/${job.id}-recap.mp4`,
+
+      progress:
+        100,
+
+      status:
+        "completed",
+
+      message:
+        "Recap video အဆင်သင့်ဖြစ်ပါပြီ",
+
+      stage:
+        "done"
+    }
   );
 
-  return outputFile;
+
+  return outputPath;
+
 }
 
-// ============================================================
-// PROCESS JOB
-// ============================================================
+
+/* =========================================================
+   COMPLETE PIPELINE
+========================================================= */
 
 async function processJob(
-  jobId,
-  notes,
-  voiceStyle
+  job
 ) {
-
-  const job =
-    jobs.get(jobId);
-
-  if (!job) {
-    return;
-  }
 
   try {
 
-    // --------------------------------------------------------
-    // STEP 1
-    // --------------------------------------------------------
+    updateJob(
+      job.id,
+      {
+        status:
+          "processing",
 
-    job.status =
-      "analyzing";
+        stage:
+          "analyze",
 
-    job.progress =
-      15;
+        progress:
+          12
+      }
+    );
 
-    job.message =
-      "Video ကို စစ်ဆေးနေပါတယ်";
 
-    const duration =
-      await getVideoDuration(
-        job.inputPath
+    const analysis =
+      await analyzeVideoWithGemini(
+        job
       );
 
-    job.duration =
-      duration;
-
-    if (
-      duration >
-      MAX_VIDEO_SECONDS
-    ) {
-
-      throw new Error(
-        "Video duration must be 5 minutes or less"
-      );
-    }
-
-    // --------------------------------------------------------
-    // STEP 2
-    // --------------------------------------------------------
-
-    job.status =
-      "writing";
-
-    job.progress =
-      30;
-
-    job.message =
-      "Myanmar recap script ရေးနေပါတယ်";
 
     const script =
-      generateMyanmarRecap(
-        notes
+      await generateMyanmarScript(
+        job,
+        analysis
       );
 
-    job.script =
-      script;
 
-    // --------------------------------------------------------
-    // STEP 3
-    // --------------------------------------------------------
-
-    job.status =
-      "voice";
-
-    job.progress =
-      50;
-
-    job.message =
-      "Myanmar narration ဖန်တီးနေပါတယ်";
-
-    const voiceFile =
-      path.join(
-        OUTPUT_DIR,
-        `${jobId}-voice.mp3`
+    const audio =
+      await createMyanmarVoice(
+        job,
+        script
       );
 
-    await generateVoice(
-      script,
-      voiceFile
-    );
 
-    job.voicePath =
-      voiceFile;
+    job.audioPath =
+      audio;
 
-    // --------------------------------------------------------
-    // STEP 4
-    // --------------------------------------------------------
 
-    job.status =
-      "subtitle";
-
-    job.progress =
-      65;
-
-    job.message =
-      "Myanmar subtitle ပြုလုပ်နေပါတယ်";
-
-    const subtitleFile =
-      path.join(
-        OUTPUT_DIR,
-        `${jobId}.srt`
+    const subtitle =
+      await createSubtitle(
+        job,
+        script
       );
 
-    generateSubtitle(
-      script,
-      duration,
-      subtitleFile
-    );
 
     job.subtitlePath =
-      subtitleFile;
+      subtitle;
 
-    // --------------------------------------------------------
-    // STEP 5
-    // --------------------------------------------------------
 
-    job.status =
-      "rendering";
-
-    job.progress =
-      80;
-
-    job.message =
-      "Final MP4 ပြုလုပ်နေပါတယ်";
-
-    const finalFile =
-      path.join(
-        OUTPUT_DIR,
-        `${jobId}-recap.mp4`
-      );
-
-    await renderVideo(
-      job.inputPath,
-      voiceFile,
-      subtitleFile,
-      finalFile
+    await renderFinalVideo(
+      job
     );
 
-    // --------------------------------------------------------
-    // DONE
-    // --------------------------------------------------------
 
-    job.status =
-      "complete";
+    /*
+      Cleanup temporary TTS chunks
+    */
 
-    job.progress =
-      100;
-
-    job.message =
-      "Recap ပြီးပါပြီ";
-
-    job.outputUrl =
-      `/outputs/${path.basename(
-        finalFile
-      )}`;
-
-    console.log(
-      `Job ${jobId} completed`
+    cleanupTemporaryFiles(
+      job.id
     );
+
 
   } catch (error) {
 
     console.error(
-      `Job ${jobId} error:`,
+      "JOB FAILED:",
       error
     );
 
-    job.status =
-      "error";
 
-    job.progress =
-      0;
+    updateJob(
+      job.id,
+      {
+        status:
+          "failed",
 
-    job.message =
-      error.message ||
-      "Processing failed";
+        stage:
+          "error",
+
+        error:
+          error.message ||
+          "Processing failed",
+
+        message:
+          error.message ||
+          "Processing failed"
+      }
+    );
+
   }
+
 }
 
-// ============================================================
-// HEALTH CHECK
-// ============================================================
+
+/* =========================================================
+   CLEANUP
+========================================================= */
+
+function cleanupTemporaryFiles(
+  jobId
+) {
+
+  try {
+
+    const files =
+      fs.readdirSync(
+        OUTPUT_DIR
+      );
+
+
+    for (
+      const file
+      of files
+    ) {
+
+      if (
+        file.startsWith(
+          jobId + "-tts-"
+        ) ||
+        file ===
+          `${jobId}-audio-list.txt`
+      ) {
+
+        try {
+
+          fs.unlinkSync(
+            path.join(
+              OUTPUT_DIR,
+              file
+            )
+          );
+
+        } catch {}
+
+      }
+
+    }
+
+  } catch {}
+
+}
+
+
+/* =========================================================
+   API HEALTH
+========================================================= */
 
 app.get(
   "/api/health",
   (req, res) => {
 
     res.json({
-      ok: true,
-      app: "RECAP ONE CLIP",
-      version: "1.0.0",
-      status: "online"
+
+      ok:
+        true,
+
+      app:
+        "RECAP ONE CLIP",
+
+      version:
+        "2.0.0",
+
+      gemini:
+        Boolean(GEMINI_API_KEY),
+
+      model:
+        GEMINI_MODEL
+
     });
+
   }
 );
 
-// ============================================================
-// API INFO
-// ============================================================
+
+/* =========================================================
+   API ROOT
+========================================================= */
 
 app.get(
   "/api",
@@ -891,110 +1718,123 @@ app.get(
         "RECAP ONE CLIP",
 
       version:
-        "1.0.0",
+        "2.0.0",
 
-      status:
-        "online",
+      endpoints: [
 
-      endpoints: {
+        "POST /api/upload",
 
-        health:
-          "/api/health",
+        "POST /api/generate/:id",
 
-        upload:
-          "POST /api/upload",
+        "GET /api/status/:id",
 
-        generate:
-          "POST /api/generate/:id",
+        "GET /api/health"
 
-        status:
-          "GET /api/status/:id"
-      }
+      ]
+
     });
+
   }
 );
 
-// ============================================================
-// UPLOAD VIDEO
-// ============================================================
+
+/* =========================================================
+   UPLOAD
+========================================================= */
 
 app.post(
   "/api/upload",
-
   upload.single("video"),
-
   async (req, res) => {
 
     try {
 
       if (!req.file) {
 
-        return res.status(400).json({
-          ok: false,
-          message:
-            "Video file မတွေ့ပါ"
-        });
+        return res
+          .status(400)
+          .json({
+            error:
+              "Video file မရပါ"
+          });
+
       }
 
-      const duration =
-        await getVideoDuration(
-          req.file.path
+
+      const job =
+        createJob(
+          req.file
         );
 
-      if (
-        duration >
-        MAX_VIDEO_SECONDS
-      ) {
 
-        deleteFile(
-          req.file.path
-        );
+      try {
 
-        return res.status(400).json({
-          ok: false,
-          message:
-            "Video သည် 5 minutes ထက် မကျော်ရပါ"
-        });
-      }
+        const info =
+          await getVideoInfo(
+            req.file.path
+          );
 
-      const jobId =
-        createJobId();
 
-      jobs.set(
-        jobId,
-        {
+        job.duration =
+          info.duration;
 
-          id:
-            jobId,
 
-          status:
-            "uploaded",
+        if (
+          info.duration >
+          MAX_VIDEO_SECONDS
+        ) {
 
-          progress:
-            5,
+          fs.unlinkSync(
+            req.file.path
+          );
 
-          message:
-            "Video upload ပြီးပါပြီ",
 
-          originalName:
-            req.file.originalname,
+          jobs.delete(
+            job.id
+          );
 
-          inputPath:
-            req.file.path,
 
-          duration:
-            duration,
+          return res
+            .status(400)
+            .json({
 
-          script:
-            "",
+              error:
+                "Video duration က 5 minutes ထက် မကျော်ရပါ",
 
-          outputUrl:
-            "",
+              duration:
+                info.duration
 
-          createdAt:
-            new Date().toISOString()
+            });
+
         }
-      );
+
+      } catch (probeError) {
+
+        try {
+
+          fs.unlinkSync(
+            req.file.path
+          );
+
+        } catch {}
+
+
+        jobs.delete(
+          job.id
+        );
+
+
+        return res
+          .status(400)
+          .json({
+
+            error:
+              probeError.message
+
+          });
+
+      }
+
 
       res.json({
 
@@ -1002,113 +1842,124 @@ app.post(
           true,
 
         jobId:
-          jobId,
+          job.id,
+
+        id:
+          job.id,
+
+        status:
+          job.status,
 
         duration:
-          duration,
+          job.duration,
 
         fileName:
-          req.file.originalname,
+          job.originalName
 
-        message:
-          "Video upload successful"
       });
 
     } catch (error) {
 
       console.error(
-        "Upload error:",
         error
       );
 
-      if (req.file) {
 
-        deleteFile(
-          req.file.path
-        );
-      }
+      res
+        .status(500)
+        .json({
 
-      res.status(500).json({
+          error:
+            error.message ||
+            "Upload failed"
 
-        ok:
-          false,
+        });
 
-        message:
-          error.message ||
-          "Upload failed"
-      });
     }
+
   }
 );
 
-// ============================================================
-// GENERATE RECAP
-// ============================================================
+
+/* =========================================================
+   GENERATE
+========================================================= */
 
 app.post(
   "/api/generate/:id",
-
   async (req, res) => {
 
-    const jobId =
-      req.params.id;
-
     const job =
-      jobs.get(jobId);
+      jobs.get(
+        req.params.id
+      );
+
 
     if (!job) {
 
-      return res.status(404).json({
+      return res
+        .status(404)
+        .json({
 
-        ok:
-          false,
+          error:
+            "Job မတွေ့ပါ"
 
-        message:
-          "Job မတွေ့ပါ"
-      });
+        });
+
     }
+
 
     if (
-      job.status !==
-      "uploaded" &&
-      job.status !==
-      "error"
+      job.status ===
+      "processing"
     ) {
 
-      return res.status(400).json({
+      return res.json({
 
         ok:
-          false,
+          true,
 
         message:
-          "ဒီ video ကို processing လုပ်နေပြီးသားပါ"
+          "Job already processing",
+
+        jobId:
+          job.id
+
       });
+
     }
 
-    const notes =
-      typeof req.body?.notes ===
-      "string"
-        ? req.body.notes
-        : "";
-
-    const voiceStyle =
-      typeof req.body?.voiceStyle ===
-      "string"
-        ? req.body.voiceStyle
-        : "cinematic";
 
     job.notes =
-      notes;
+      String(
+        req.body.notes ||
+        ""
+      ).slice(
+        0,
+        5000
+      );
+
 
     job.voiceStyle =
-      voiceStyle;
+      String(
+        req.body.voiceStyle ||
+        "natural"
+      );
 
-    // Start background processing
-    processJob(
-      jobId,
-      notes,
-      voiceStyle
-    );
+
+    if (!GEMINI_API_KEY) {
+
+      return res
+        .status(500)
+        .json({
+
+          error:
+            "Render Environment Variables ထဲမှာ GEMINI_API_KEY မရှိပါ"
+
+        });
+
+    }
+
 
     res.json({
 
@@ -1116,21 +1967,34 @@ app.post(
         true,
 
       jobId:
-        jobId,
+        job.id,
 
       status:
-        "started"
+        "processing"
+
     });
+
+
+    /*
+      Run asynchronously so the browser
+      does not need to keep the POST
+      request open.
+    */
+
+    processJob(
+      job
+    );
+
   }
 );
 
-// ============================================================
-// JOB STATUS
-// ============================================================
+
+/* =========================================================
+   STATUS
+========================================================= */
 
 app.get(
   "/api/status/:id",
-
   (req, res) => {
 
     const job =
@@ -1138,17 +2002,20 @@ app.get(
         req.params.id
       );
 
+
     if (!job) {
 
-      return res.status(404).json({
+      return res
+        .status(404)
+        .json({
 
-        ok:
-          false,
+          error:
+            "Job မတွေ့ပါ"
 
-        message:
-          "Job မတွေ့ပါ"
-      });
+        });
+
     }
+
 
     res.json({
 
@@ -1161,7 +2028,13 @@ app.get(
       status:
         job.status,
 
+      stage:
+        job.stage,
+
       progress:
+        job.progress,
+
+      percent:
         job.progress,
 
       message:
@@ -1170,35 +2043,43 @@ app.get(
       duration:
         job.duration,
 
-      script:
-        job.script || "",
-
       outputUrl:
-        job.outputUrl || "",
+        job.outputUrl,
 
-      originalName:
-        job.originalName || ""
+      subtitleUrl:
+        job.subtitleUrl,
+
+      error:
+        job.error
+
     });
+
   }
 );
 
-// ============================================================
-// OUTPUT FILES
-// ============================================================
+
+/* =========================================================
+   OUTPUTS
+========================================================= */
 
 app.use(
   "/outputs",
   express.static(
-    OUTPUT_DIR
+    OUTPUT_DIR,
+    {
+      fallthrough:
+        false,
+
+      maxAge:
+        "1h"
+    }
   )
 );
 
-// ============================================================
-// ROOT
-// IMPORTANT:
-// index.html is in ROOT
-// NOT /public/index.html
-// ============================================================
+
+/* =========================================================
+   FRONTEND
+========================================================= */
 
 app.get(
   "/",
@@ -1210,6 +2091,7 @@ app.get(
         "index.html"
       );
 
+
     if (
       fs.existsSync(
         indexPath
@@ -1219,92 +2101,121 @@ app.get(
       return res.sendFile(
         indexPath
       );
+
     }
 
-    res.status(200).send(
-      `
-      <h1>RECAP ONE CLIP V1</h1>
-      <p>Backend is online</p>
-      <p>API: /api/health</p>
-      `
-    );
+
+    res
+      .status(404)
+      .send(
+        "RECAP ONE CLIP index.html not found"
+      );
+
   }
 );
 
-// ============================================================
-// ERROR HANDLER
-// ============================================================
+
+/* =========================================================
+   404
+========================================================= */
 
 app.use(
-  (
-    error,
-    req,
-    res,
-    next
-  ) => {
+  (req, res) => {
+
+    res
+      .status(404)
+      .json({
+
+        error:
+          "Route not found"
+
+      });
+
+  }
+);
+
+
+/* =========================================================
+   ERROR HANDLER
+========================================================= */
+
+app.use(
+  (error, req, res, next) => {
 
     console.error(
       "SERVER ERROR:",
       error
     );
 
-    res.status(500).json({
 
-      ok:
-        false,
+    if (
+      error &&
+      error.code ===
+        "LIMIT_FILE_SIZE"
+    ) {
 
-      message:
-        error.message ||
-        "Server error"
-    });
+      return res
+        .status(413)
+        .json({
+
+          error:
+            "Video file size က 700MB ထက် မကျော်ရပါ"
+
+        });
+
+    }
+
+
+    res
+      .status(500)
+      .json({
+
+        error:
+          error.message ||
+          "Internal server error"
+
+      });
+
   }
 );
 
-// ============================================================
-// START
-// ============================================================
+
+/* =========================================================
+   START
+========================================================= */
 
 app.listen(
   PORT,
-  "0.0.0.0",
   () => {
 
     console.log(
-      "===================================="
+      "======================================"
     );
 
     console.log(
-      "      RECAP ONE CLIP V1"
+      "RECAP ONE CLIP V2"
     );
 
     console.log(
-      "      Myanmar AI Recap Studio"
+      "Port:",
+      PORT
     );
 
     console.log(
-      "===================================="
+      "Gemini:",
+      GEMINI_API_KEY
+        ? "CONFIGURED"
+        : "NOT CONFIGURED"
     );
 
     console.log(
-      `Server running on port ${PORT}`
+      "Model:",
+      GEMINI_MODEL
     );
 
     console.log(
-      "Root index:",
-      path.join(
-        ROOT_DIR,
-        "index.html"
-      )
+      "======================================"
     );
 
-    console.log(
-      "Upload directory:",
-      UPLOAD_DIR
-    );
-
-    console.log(
-      "Output directory:",
-      OUTPUT_DIR
-    );
   }
 );
